@@ -104,6 +104,7 @@
             <div class="stat-desc">Broker reported P&L</div>
         </div>
 
+        {% if strategy_engine_enabled %}
         <div class="stat">
             <div class="stat-figure text-accent">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,6 +128,7 @@
             <div class="stat-value text-accent">{{ overall_stats.total_strategies }}</div>
             <div class="stat-desc">Strategies with open positions</div>
         </div>
+        {% endif %}
     </div>
 
     <!-- Account Cards Grid -->
@@ -168,6 +170,7 @@
                         </span>
                     </div>
 
+                    {% if strategy_engine_enabled %}
                     <!-- Active Strategies -->
                     <div class="pt-2 border-t">
                         <p class="text-sm text-base-content/60 mb-2">Active Strategies</p>
@@ -193,6 +196,7 @@
                             {% endif %}
                         </div>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Today's P&L -->
@@ -207,6 +211,7 @@
         {% endfor %}
     </div>
 
+    {% if strategy_engine_enabled %}
     <!-- Strategy Positions Section -->
     <div class="card bg-base-100 shadow-lg mb-6">
         <div class="card-body">
@@ -292,6 +297,7 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- Expired Executions Modal -->
@@ -1150,14 +1156,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // round-trip before startPolling() kicked them off, which delayed funds.
     // The backend caches funds for 30s, so the duplicate call from
     // startPolling() below is served from cache (no extra broker hit).
+    {% if strategy_engine_enabled %}
     loadStrategyMetrics();
+    {% endif %}
     loadAccountFunds();
+    {% if strategy_engine_enabled %}
     loadStrategyPnL();
+    {% endif %}
 
     checkTradingHours();
     pollingIntervals.tradingHoursCheck = setInterval(checkTradingHours, 60000);
+    {% if strategy_engine_enabled %}
     loadPositionReconciliation();
     pollingIntervals.reconcileCheck = setInterval(loadPositionReconciliation, 60000);
+    {% endif %}
 });
 </script>
 {% endblock %}
