@@ -312,9 +312,16 @@ class OptionChainBackgroundService:
 
                             logger.debug("Option chains DISABLED - using on-demand loading via SessionManager")
 
-                            # START: Position monitor and risk manager (essential services)
-                            self.start_position_monitor()
-                            self.start_risk_manager()
+                            # START: Position monitor and risk manager - these track
+                            # AlgoMirror's own StrategyExecution records, so only
+                            # needed when the strategy engine is enabled
+                            from app.models import AppSettings
+                            if AppSettings.get().strategy_engine_enabled:
+                                self.start_position_monitor()
+                                self.start_risk_manager()
+                                logger.debug("Position monitor and risk manager started")
+                            else:
+                                logger.debug("Strategy engine disabled - position monitor and risk manager not started")
 
                             # Initialize SessionManager with SHARED WebSocket manager
                             # This ensures all services use the SAME connection
@@ -323,8 +330,6 @@ class OptionChainBackgroundService:
                                 logger.debug("SessionManager initialized with shared WebSocket connection")
                             else:
                                 logger.warning("No shared WebSocket manager available for SessionManager")
-
-                            logger.debug("Position monitor and risk manager started")
                     else:
                         logger.error("Flask app not set - cannot start services")
 
