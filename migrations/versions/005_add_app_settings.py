@@ -47,7 +47,10 @@ def upgrade():
     )
     existing = bind.execute(sa.select(app_settings.c.id)).first()
     if existing is None:
-        op.execute("INSERT INTO app_settings (strategy_engine_enabled) VALUES (1)")
+        # Bind the value through SQLAlchemy Core rather than a raw SQL literal -
+        # PostgreSQL's boolean column rejects an integer 1 (no implicit int->bool
+        # cast, unlike SQLite/MySQL), so this must go through the Boolean type.
+        bind.execute(app_settings.insert().values(strategy_engine_enabled=True))
 
 
 def downgrade():
