@@ -312,16 +312,11 @@ class OptionChainBackgroundService:
 
                             logger.debug("Option chains DISABLED - using on-demand loading via SessionManager")
 
-                            # START: Position monitor and risk manager - these track
-                            # AlgoMirror's own StrategyExecution records, so only
-                            # needed when the strategy engine is enabled
-                            from app.models import AppSettings
-                            if AppSettings.get().strategy_engine_enabled:
-                                self.start_position_monitor()
-                                self.start_risk_manager()
-                                logger.debug("Position monitor and risk manager started")
-                            else:
-                                logger.debug("Strategy engine disabled - position monitor and risk manager not started")
+                            # START: Position monitor and risk manager - both track
+                            # AlgoMirror's own StrategyExecution records; each self-guards
+                            # on AppSettings.strategy_engine_enabled internally
+                            self.start_position_monitor()
+                            self.start_risk_manager()
 
                             # Initialize SessionManager with SHARED WebSocket manager
                             # This ensures all services use the SAME connection
@@ -982,6 +977,11 @@ class OptionChainBackgroundService:
             logger.debug("Position monitor already running")
             return
 
+        from app.models import AppSettings
+        if not AppSettings.get().strategy_engine_enabled:
+            logger.debug("Strategy engine disabled - not starting position monitor")
+            return
+
         try:
             # Get WebSocket manager (non-blocking - may not be connected yet)
             # Position monitor works with or without WebSocket
@@ -1020,6 +1020,11 @@ class OptionChainBackgroundService:
         """Start risk manager"""
         if self.risk_manager_running:
             logger.debug("Risk manager already running")
+            return
+
+        from app.models import AppSettings
+        if not AppSettings.get().strategy_engine_enabled:
+            logger.debug("Strategy engine disabled - not starting risk manager")
             return
 
         try:
