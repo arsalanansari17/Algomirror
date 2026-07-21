@@ -8,15 +8,15 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex justify-between items-center flex-wrap gap-3">
         <div>
             <h1 class="text-3xl font-bold">Holdings</h1>
             <p class="text-base-content/70 mt-1">
                 {{ "Showing holdings for selected account" if single_account else "Showing holdings across all accounts" }}
             </p>
         </div>
-        
-        <div class="flex gap-2 items-center">
+
+        <div class="flex gap-2 items-center flex-wrap">
             <!-- Account Filter Dropdown -->
             {% if accounts|length > 1 %}
             <select class="select select-bordered select-sm h-9 min-w-[180px]" onchange="window.location.href = this.value">
@@ -28,6 +28,14 @@
                 {% endfor %}
             </select>
             {% endif %}
+
+            <button id="holdingsFiltersBtn" onclick="holdingsFiltersModal.showModal()" class="btn btn-outline btn-sm h-9 relative">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filters
+                <span id="holdingsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
+            </button>
 
             <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -45,6 +53,15 @@
         </div>
     </div>
 
+    <!-- Active Filters Bar -->
+    <div id="holdingsActiveFilters" class="hidden flex-wrap items-center gap-2">
+        <span class="text-sm text-base-content/70">Active Filters:</span>
+        <span id="filterChipT1" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has T1 Quantity</span>
+        <span id="filterChipPledged" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has Pledged Quantity</span>
+        <span id="filterChipSearch" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30"></span>
+        <button onclick="clearHoldingsFilters()" class="btn btn-outline btn-error btn-xs">Clear All</button>
+    </div>
+
     {% if holdings_data or statistics %}
     <!-- Portfolio Summary -->
     <div class="stats shadow w-full">
@@ -52,17 +69,17 @@
             <div class="stat-title">Total Holdings</div>
             <div class="stat-value">{{ holdings_data|length }}</div>
         </div>
-        
+
         <div class="stat">
             <div class="stat-title">Total Investment</div>
             <div class="stat-value text-primary">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
         </div>
-        
+
         <div class="stat">
             <div class="stat-title">Current Value</div>
             <div class="stat-value text-info">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
         </div>
-        
+
         <div class="stat">
             <div class="stat-title">Total P&L</div>
             <div class="stat-value {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
@@ -76,29 +93,55 @@
     <!-- Holdings Table -->
     <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
-            <h2 class="card-title">Your Holdings</h2>
-            
-            <div class="overflow-x-auto">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <h2 class="card-title">
+                    <span id="holdingsCount">{{ holdings_data|length }} stock{{ '' if holdings_data|length == 1 else 's' }}</span>
+                </h2>
+                <div class="relative w-full max-w-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input type="text" id="holdingsSearch" placeholder="Search symbol..." class="input input-bordered input-sm w-full pl-9 pr-8" oninput="applyHoldingsFilters()">
+                    <button type="button" id="holdingsSearchClear" onclick="clearHoldingsSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content">
+                        &times;
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto mt-2">
                 <table class="table table-sm">
                     <thead>
                         <tr>
                             {% if not single_account %}
                             <th>Account</th>
                             {% endif %}
-                            <th>Symbol</th>
-                            <th>Exchange</th>
-                            <th>Qty</th>
-                            <th>Avg Price</th>
-                            <th>LTP</th>
-                            <th>Current Value</th>
-                            <th>P&L</th>
-                            <th>P&L %</th>
-                            <th>Day Change</th>
+                            <th class="cursor-pointer select-none" onclick="sortHoldings('symbol')">Symbol <span class="sort-arrow" data-col="symbol"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('qty')">Quantity <span class="sort-arrow" data-col="qty"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('avgprice')">Avg. Price <span class="sort-arrow" data-col="avgprice"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('ltp')">LTP <span class="sort-arrow" data-col="ltp"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('invested')">Invested <span class="sort-arrow" data-col="invested"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('current')">Current <span class="sort-arrow" data-col="current"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnl')">P&L <span class="sort-arrow" data-col="pnl"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnlpercent')">P&L % <span class="sort-arrow" data-col="pnlpercent"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('allocation')">Allocation <span class="sort-arrow" data-col="allocation"></span></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="holdingsTbody">
                         {% for holding in holdings_data %}
-                        <tr class="hover">
+                        {% set t1 = holding.t1_quantity|float if holding.t1_quantity else 0 %}
+                        {% set pledged = holding.pledged_quantity|float if holding.pledged_quantity else 0 %}
+                        <tr class="hover"
+                            data-symbol="{{ holding.symbol|lower }}"
+                            data-has-t1="{{ '1' if t1 > 0 else '0' }}"
+                            data-has-pledged="{{ '1' if pledged > 0 else '0' }}"
+                            data-qty="{{ holding.total_qty }}"
+                            data-avgprice="{{ holding.average_price or 0 }}"
+                            data-ltp="{{ holding.ltp or 0 }}"
+                            data-invested="{{ holding.invested }}"
+                            data-current="{{ holding.current }}"
+                            data-pnl="{{ holding.pnl or 0 }}"
+                            data-pnlpercent="{{ holding.pnlpercent or 0 }}"
+                            data-allocation="{{ holding.allocation }}">
                             {% if not single_account %}
                             <td>
                                 <div class="flex items-center gap-2">
@@ -111,33 +154,50 @@
                             </td>
                             {% endif %}
                             <td class="font-semibold">{{ holding.symbol }}</td>
-                            <td>{{ holding.exchange }}</td>
-                            <td class="font-mono">{{ holding.quantity }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format(holding.avgprice|float) if holding.avgprice else "0.00" }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format((holding.quantity|float * holding.ltp|float)) if holding.ltp else "0.00" }}</td>
-                            <td class="font-mono {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}">
+                            <td class="font-mono text-right">
+                                {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: {{ t1|int }}</span>{% endif %}
+                                {% if pledged > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">P: {{ pledged|int }}</span>{% endif %}
+                                {{ holding.quantity }}
+                            </td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.invested) }}</td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.current) }}</td>
+                            <td class="font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}">
                                 ₹{{ "%.2f"|format(holding.pnl|float) if holding.pnl else "0.00" }}
                             </td>
-                            <td class="{{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
+                            <td class="text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
                                 {{ "%.2f"|format(holding.pnlpercent|float) if holding.pnlpercent else "0.00" }}%
                             </td>
-                            <td class="{{ 'text-success' if holding.get('close') and holding.get('close')|float > 0 and holding.ltp|float > holding.get('close')|float else 'text-error' if holding.get('close') and holding.get('close')|float > 0 and holding.ltp|float < holding.get('close')|float else '' }}">
-                                {% if holding.get('close') and holding.get('close')|float > 0 %}
-                                    {{ "%.2f"|format(((holding.ltp|float - holding.get('close')|float) / holding.get('close')|float) * 100) }}%
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
+                            <td class="allocation-cell font-mono text-right text-base-content/70">{{ "%.2f"|format(holding.allocation) }}%</td>
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="font-bold bg-base-200">
+                            <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
+                            <td></td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
+                            <td class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</td>
+                            <td class="font-mono text-right {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
+                                ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
+                            </td>
+                            <td class="text-right {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}">
+                                {{ "%.2f"|format(statistics.totalpnlpercentage) }}%
+                            </td>
+                            <td class="font-mono text-right">100.00%</td>
+                        </tr>
+                    </tfoot>
                 </table>
+            </div>
+
+            <div id="holdingsNoMatch" class="hidden text-center py-12 text-base-content/60">
+                No holdings match your filters. Try a different search or clear the filters.
             </div>
         </div>
     </div>
     {% endif %}
-    
+
     {% else %}
     <!-- No Holdings -->
     <div class="card bg-base-100 shadow-xl">
@@ -168,7 +228,199 @@
     {% endif %}
 </div>
 
+<!-- Filters Dialog -->
+<dialog id="holdingsFiltersModal" class="modal">
+    <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-1">Holdings Filters</h3>
+        <p class="text-sm text-base-content/60 mb-4">Configure filters and how portfolio metrics are calculated</p>
+
+        <div class="space-y-2 mb-5">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Filters</label>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" id="filterBtnT1" onclick="toggleHoldingsFilter('hasT1')" class="btn btn-sm btn-outline rounded-full">Has T1 Quantity</button>
+                <button type="button" id="filterBtnPledged" onclick="toggleHoldingsFilter('hasPledged')" class="btn btn-sm btn-outline rounded-full">Has Pledged Quantity</button>
+            </div>
+            <p class="text-xs text-base-content/50">Selecting both shows holdings matching either.</p>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <div class="space-y-2">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Allocation Basis</label>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" id="allocBtnCurrent" onclick="setAllocationBasis('current')" class="btn btn-sm rounded-full">Current Value</button>
+                <button type="button" id="allocBtnInvested" onclick="setAllocationBasis('invested')" class="btn btn-sm btn-outline rounded-full">Invested Value</button>
+            </div>
+            <p id="allocationBasisHint" class="text-xs text-base-content/50">Weight by market value today (qty × LTP).</p>
+        </div>
+
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="clearHoldingsFilters()">Clear All</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="holdingsFiltersModal.close()">Done</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
 <script>
+const HOLDINGS_STORAGE_KEY = 'algomirror_holdings_prefs';
+const TOTAL_CURRENT_VALUE = {{ statistics.totalholdingvalue if statistics else 0 }};
+const TOTAL_INVESTED_VALUE = {{ statistics.totalinvvalue if statistics else 0 }};
+
+let holdingsFilters = { hasT1: false, hasPledged: false };
+let allocationBasis = 'current';
+let holdingsSort = { col: null, dir: 'asc' };
+
+function loadHoldingsPrefs() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(HOLDINGS_STORAGE_KEY) || '{}');
+        if (saved.filters) {
+            holdingsFilters.hasT1 = !!saved.filters.hasT1;
+            holdingsFilters.hasPledged = !!saved.filters.hasPledged;
+        }
+        if (saved.allocationBasis === 'current' || saved.allocationBasis === 'invested') {
+            allocationBasis = saved.allocationBasis;
+        }
+    } catch (e) { /* ignore malformed prefs */ }
+}
+
+function saveHoldingsPrefs() {
+    localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify({ filters: holdingsFilters, allocationBasis }));
+}
+
+function toggleHoldingsFilter(key) {
+    holdingsFilters[key] = !holdingsFilters[key];
+    saveHoldingsPrefs();
+    syncFilterButtons();
+    applyHoldingsFilters();
+}
+
+function setAllocationBasis(basis) {
+    allocationBasis = basis;
+    saveHoldingsPrefs();
+    syncFilterButtons();
+    recomputeAllocationColumn();
+}
+
+function syncFilterButtons() {
+    const t1Btn = document.getElementById('filterBtnT1');
+    const pledgedBtn = document.getElementById('filterBtnPledged');
+    t1Btn.classList.toggle('btn-primary', holdingsFilters.hasT1);
+    t1Btn.classList.toggle('btn-outline', !holdingsFilters.hasT1);
+    pledgedBtn.classList.toggle('btn-primary', holdingsFilters.hasPledged);
+    pledgedBtn.classList.toggle('btn-outline', !holdingsFilters.hasPledged);
+
+    const curBtn = document.getElementById('allocBtnCurrent');
+    const invBtn = document.getElementById('allocBtnInvested');
+    curBtn.classList.toggle('btn-primary', allocationBasis === 'current');
+    curBtn.classList.toggle('btn-outline', allocationBasis !== 'current');
+    invBtn.classList.toggle('btn-primary', allocationBasis === 'invested');
+    invBtn.classList.toggle('btn-outline', allocationBasis !== 'invested');
+    document.getElementById('allocationBasisHint').textContent = allocationBasis === 'current'
+        ? 'Weight by market value today (qty × LTP).'
+        : 'Weight by cost basis (qty × avg. price).';
+
+    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged;
+    document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !hasActive && !currentSearchQuery());
+
+    document.getElementById('filterChipT1').classList.toggle('hidden', !holdingsFilters.hasT1);
+    document.getElementById('filterChipPledged').classList.toggle('hidden', !holdingsFilters.hasPledged);
+}
+
+function recomputeAllocationColumn() {
+    const total = allocationBasis === 'invested' ? TOTAL_INVESTED_VALUE : TOTAL_CURRENT_VALUE;
+    document.querySelectorAll('#holdingsTbody tr').forEach(row => {
+        const value = parseFloat(row.dataset[allocationBasis === 'invested' ? 'invested' : 'current']) || 0;
+        const pct = total > 0 ? (value / total) * 100 : 0;
+        row.dataset.allocation = pct;
+        row.querySelector('.allocation-cell').textContent = pct.toFixed(2) + '%';
+    });
+    if (holdingsSort.col === 'allocation') sortHoldings('allocation', true);
+}
+
+function currentSearchQuery() {
+    return document.getElementById('holdingsSearch').value.trim().toLowerCase();
+}
+
+function clearHoldingsSearch() {
+    document.getElementById('holdingsSearch').value = '';
+    applyHoldingsFilters();
+}
+
+function clearHoldingsFilters() {
+    holdingsFilters = { hasT1: false, hasPledged: false };
+    document.getElementById('holdingsSearch').value = '';
+    saveHoldingsPrefs();
+    syncFilterButtons();
+    applyHoldingsFilters();
+}
+
+function applyHoldingsFilters() {
+    const query = currentSearchQuery();
+    document.getElementById('holdingsSearchClear').classList.toggle('hidden', query === '');
+    document.getElementById('filterChipSearch').classList.toggle('hidden', query === '');
+    document.getElementById('filterChipSearch').textContent = 'Search: ' + query;
+
+    const rows = document.querySelectorAll('#holdingsTbody tr');
+    let visible = 0;
+    rows.forEach(row => {
+        let show = true;
+        if (query && !row.dataset.symbol.includes(query)) show = false;
+        if (holdingsFilters.hasT1 || holdingsFilters.hasPledged) {
+            const matchesT1 = holdingsFilters.hasT1 && row.dataset.hasT1 === '1';
+            const matchesPledged = holdingsFilters.hasPledged && row.dataset.hasPledged === '1';
+            if (!matchesT1 && !matchesPledged) show = false;
+        }
+        row.classList.toggle('hidden', !show);
+        if (show) visible++;
+    });
+
+    const total = rows.length;
+    const countEl = document.getElementById('holdingsCount');
+    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged || query !== '';
+    countEl.textContent = hasActive
+        ? `${visible} of ${total} stock${total === 1 ? '' : 's'}`
+        : `${total} stock${total === 1 ? '' : 's'}`;
+
+    document.getElementById('holdingsActiveFilters').classList.toggle('hidden', !hasActive);
+    document.getElementById('holdingsActiveFilters').classList.toggle('flex', hasActive);
+    document.getElementById('holdingsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
+    document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !(holdingsFilters.hasT1 || holdingsFilters.hasPledged));
+}
+
+function sortHoldings(col, silent) {
+    if (!silent) {
+        holdingsSort.dir = (holdingsSort.col === col && holdingsSort.dir === 'asc') ? 'desc' : 'asc';
+        holdingsSort.col = col;
+    }
+    const tbody = document.getElementById('holdingsTbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const dir = holdingsSort.dir === 'asc' ? 1 : -1;
+
+    rows.sort((a, b) => {
+        if (col === 'symbol') {
+            return dir * a.dataset.symbol.localeCompare(b.dataset.symbol);
+        }
+        const aVal = parseFloat(a.dataset[col]) || 0;
+        const bVal = parseFloat(b.dataset[col]) || 0;
+        return dir * (aVal - bVal);
+    });
+    rows.forEach(row => tbody.appendChild(row));
+
+    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+    const arrow = document.querySelector(`.sort-arrow[data-col="${col}"]`);
+    if (arrow) arrow.textContent = holdingsSort.dir === 'asc' ? '▲' : '▼';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadHoldingsPrefs();
+    syncFilterButtons();
+    applyHoldingsFilters();
+    if (allocationBasis !== 'current') recomputeAllocationColumn();
+});
+
 function exportToCSV(type) {
     // Get the table
     const table = document.querySelector('table');
@@ -177,9 +429,9 @@ function exportToCSV(type) {
         return;
     }
 
-    // Convert table to CSV
+    // Convert table to CSV (skip rows hidden by filters)
     let csv = [];
-    const rows = table.querySelectorAll('tr');
+    const rows = table.querySelectorAll('tr:not(.hidden)');
 
     for (let i = 0; i < rows.length; i++) {
         const row = [];
@@ -187,7 +439,7 @@ function exportToCSV(type) {
 
         for (let j = 0; j < cols.length; j++) {
             // Get text content and clean it
-            let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, '').trim();
+            let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim();
             // Remove rupee symbol
             data = data.replace(/₹/g, '');
             // Escape quotes
