@@ -358,11 +358,41 @@ def holdings():
                 holding['invested'] = 0
                 holding['current'] = 0
 
+    def attach_day_change(holding_list, account):
+        """Day's P&L needs a previous close, which the holdings API doesn't
+        return - fetch it in one batched multiquotes call per account
+        (page-load only, no continuous polling/websocket like OpenAlgo's
+        React frontend uses) and merge day_change (ltp - prev_close) back
+        onto each holding. Best-effort: quote failures just leave holdings
+        without day_change, and the Day's P&L card is omitted entirely."""
+        if not holding_list:
+            return
+        try:
+            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+            symbols = [{'symbol': h.get('symbol'), 'exchange': h.get('exchange')} for h in holding_list]
+            mq = client.multiquotes(symbols=symbols)
+            if not mq or mq.get('status') != 'success':
+                return
+            prev_close_by_key = {}
+            for item in mq.get('results', []) or []:
+                data = item.get('data') or {}
+                prev_close = data.get('prev_close')
+                if prev_close:
+                    prev_close_by_key[(item.get('symbol'), item.get('exchange'))] = float(prev_close)
+            for h in holding_list:
+                prev_close = prev_close_by_key.get((h.get('symbol'), h.get('exchange')))
+                if prev_close and prev_close > 0:
+                    ltp = float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0)
+                    h['day_change'] = ltp - prev_close
+        except Exception as e:
+            current_app.logger.warning(f'Could not fetch day-change quotes for account {account.id}: {e}')
+
     for account, response in results:
         if response and response.get('status') == 'success':
             data = response.get('data', {})
             holding_list = data.get('holdings', [])
             enrich_holdings(holding_list, account)
+            attach_day_change(holding_list, account)
             holdings_data.extend(holding_list)
 
             # Update cache
@@ -376,6 +406,7 @@ def holdings():
             data = account.last_holdings_data
             holding_list = data.get('holdings', []) if isinstance(data, dict) else []
             enrich_holdings(holding_list, account)
+            attach_day_change(holding_list, account)
             holdings_data.extend(holding_list)
 
     # Calculate statistics from the per-row invested/current values (accurate,
@@ -396,7 +427,30 @@ def holdings():
         holding['allocation'] = (
             (holding.get('current', 0) / total_holdingvalue * 100) if total_holdingvalue > 0 else 0
         )
-    
+
+    # Day's P&L: weight each holding's day_change (per-share) by its total
+    # quantity, then derive prev_close value back out (ltp - day_change)
+    # rather than storing it separately - same aggregation OpenAlgo's own
+    # calculateLiveStats() uses. Holdings without a day_change (quote fetch
+    # failed for that account) are excluded rather than treated as zero.
+    day_change_items = [h for h in holdings_data if 'day_change' in h]
+    for holding in holdings_data:
+        if 'day_change' in holding:
+            ltp = float(holding.get('ltp', 0) or 0) or float(holding.get('average_price', 0) or 0)
+            prev_close = ltp - holding['day_change']
+            holding['day_change_percent'] = (holding['day_change'] / prev_close * 100) if prev_close else 0
+    if day_change_items:
+        total_day_pnl = sum(h['day_change'] * h.get('total_qty', 0) for h in day_change_items)
+        total_prev_close_value = sum(
+            (float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0) - h['day_change'])
+            * h.get('total_qty', 0)
+            for h in day_change_items
+        )
+        statistics['totaldaypnl'] = total_day_pnl
+        statistics['totaldaypnlpercentage'] = (
+            (total_day_pnl / total_prev_close_value * 100) if total_prev_close_value > 0 else 0
+        )
+
     return render_template('trading/holdings.html',
                          holdings_data=holdings_data,
                          statistics=statistics,

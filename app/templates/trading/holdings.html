@@ -66,21 +66,31 @@
     <!-- Portfolio Summary -->
     <div class="stats shadow w-full">
         <div class="stat">
-            <div class="stat-title">Total Investment</div>
+            <div class="stat-title">Invested</div>
             <div class="stat-value text-primary">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
         </div>
 
         <div class="stat">
-            <div class="stat-title">Current Value</div>
+            <div class="stat-title">Current</div>
             <div class="stat-value text-info">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
         </div>
+
+        {% if statistics.totaldaypnl is defined %}
+        <div class="stat">
+            <div class="stat-title">Day's P&L</div>
+            <div class="stat-value {{ 'text-success' if statistics.totaldaypnl >= 0 else 'text-error' }}">
+                ₹{{ "%.2f"|format(statistics.totaldaypnl) }}
+            </div>
+            <div class="stat-desc">{{ "+" if statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) }}%</div>
+        </div>
+        {% endif %}
 
         <div class="stat">
             <div class="stat-title">Total P&L</div>
             <div class="stat-value {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
             </div>
-            <div class="stat-desc">{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
+            <div class="stat-desc">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
         </div>
     </div>
 
@@ -118,6 +128,7 @@
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('current')">Current <span class="sort-arrow" data-col="current"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnl')">P&L <span class="sort-arrow" data-col="pnl"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnlpercent')">P&L % <span class="sort-arrow" data-col="pnlpercent"></span></th>
+                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('daychangepercent')">Day Chg % <span class="sort-arrow" data-col="daychangepercent"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('allocation')">Allocation <span class="sort-arrow" data-col="allocation"></span></th>
                         </tr>
                     </thead>
@@ -136,6 +147,7 @@
                             data-current="{{ holding.current }}"
                             data-pnl="{{ holding.pnl or 0 }}"
                             data-pnlpercent="{{ holding.pnlpercent or 0 }}"
+                            data-daychangepercent="{{ holding.day_change_percent if holding.day_change_percent is defined else 0 }}"
                             data-allocation="{{ holding.allocation }}">
                             {% if not single_account %}
                             <td>
@@ -164,6 +176,9 @@
                             <td class="text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
                                 {{ "%.2f"|format(holding.pnlpercent|float) if holding.pnlpercent else "0.00" }}%
                             </td>
+                            <td class="text-right {{ 'text-success' if holding.day_change_percent is defined and holding.day_change_percent >= 0 else 'text-error' if holding.day_change_percent is defined else 'text-base-content/50' }}">
+                                {{ "%.2f"|format(holding.day_change_percent) ~ "%" if holding.day_change_percent is defined else "-" }}
+                            </td>
                             <td class="allocation-cell font-mono text-right text-base-content/70">{{ "%.2f"|format(holding.allocation) }}%</td>
                         </tr>
                         {% endfor %}
@@ -172,6 +187,7 @@
                         <tr class="font-bold bg-base-200">
                             <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
                             <td></td>
+                            <td></td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</td>
                             <td class="font-mono text-right {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
@@ -179,6 +195,9 @@
                             </td>
                             <td class="text-right {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}">
                                 {{ "%.2f"|format(statistics.totalpnlpercentage) }}%
+                            </td>
+                            <td class="text-right {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' if statistics.totaldaypnlpercentage is defined else 'text-base-content/50' }}">
+                                {{ "%.2f"|format(statistics.totaldaypnlpercentage) ~ "%" if statistics.totaldaypnlpercentage is defined else "-" }}
                             </td>
                             <td class="font-mono text-right">100.00%</td>
                         </tr>
