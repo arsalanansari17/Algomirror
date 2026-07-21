@@ -8,6 +8,7 @@ from app.utils.option_chain import OptionChainManager
 from app.utils.websocket_manager import ProfessionalWebSocketManager
 from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
+from app.utils.rate_limiter import api_rate_limit
 from datetime import datetime
 import json
 import time
@@ -46,10 +47,18 @@ def fetch_broker_data_parallel(accounts, api_method, app):
         return list(executor.map(fetch_one, accounts))
 
 
+def get_selected_account_id():
+    """Return the ?account= query param as an int, or None if absent/invalid."""
+    try:
+        return int(request.args.get('account'))
+    except (TypeError, ValueError):
+        return None
+
+
 def get_selected_accounts():
     """Get accounts to display based on user selection"""
     selected_account_id = request.args.get('account')
-    
+
     if selected_account_id:
         try:
             # Convert to integer for database query
@@ -303,6 +312,7 @@ def positions():
                          total_invested=total_invested,
                          total_current=total_current,
                          single_account=len(accounts) == 1,
+                         selected_account_id=get_selected_account_id(),
                          accounts=current_user.get_active_accounts())
 
 @trading_bp.route('/holdings')
@@ -315,16 +325,34 @@ def holdings():
     app = current_app._get_current_object()
     results = fetch_broker_data_parallel(accounts, 'holdings', app)
 
+    def enrich_holdings(holding_list, account):
+        """Add account info and per-row Invested/Current value (using total
+        quantity - free + T1 + pledged, since pledged/T1 shares are still
+        part of what you own and what you paid for them)."""
+        for holding in holding_list:
+            holding['account_name'] = account.account_name
+            holding['account_id'] = account.id
+            holding['broker'] = account.broker_name
+            try:
+                free_qty = float(holding.get('quantity', 0) or 0)
+                t1_qty = float(holding.get('t1_quantity', 0) or 0)
+                pledged_qty = float(holding.get('pledged_quantity', 0) or 0)
+                total_qty = free_qty + t1_qty + pledged_qty
+                avg_price = float(holding.get('average_price', 0) or 0)
+                ltp = float(holding.get('ltp', 0) or 0) or avg_price
+                holding['total_qty'] = total_qty
+                holding['invested'] = total_qty * avg_price
+                holding['current'] = total_qty * ltp
+            except (ValueError, TypeError):
+                holding['total_qty'] = holding.get('quantity', 0)
+                holding['invested'] = 0
+                holding['current'] = 0
+
     for account, response in results:
         if response and response.get('status') == 'success':
             data = response.get('data', {})
             holding_list = data.get('holdings', [])
-
-            for holding in holding_list:
-                holding['account_name'] = account.account_name
-                holding['account_id'] = account.id
-                holding['broker'] = account.broker_name
-
+            enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
 
             # Update cache
@@ -337,39 +365,162 @@ def holdings():
         elif account.last_holdings_data:
             data = account.last_holdings_data
             holding_list = data.get('holdings', []) if isinstance(data, dict) else []
-            for holding in holding_list:
-                holding['account_name'] = account.account_name
-                holding['account_id'] = account.id
-                holding['broker'] = account.broker_name
+            enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
-    
-    # Calculate statistics
+
+    # Calculate statistics from the per-row invested/current values (accurate,
+    # includes T1/pledged quantity, avoids the old pnl/pnlpercent back-derivation)
+    total_invvalue = sum(h.get('invested', 0) for h in holdings_data)
+    total_holdingvalue = sum(h.get('current', 0) for h in holdings_data)
+    total_pnl = sum(float(h.get('pnl', 0) or 0) for h in holdings_data)
     statistics = {
-        'totalholdingvalue': sum(float(h.get('quantity', 0)) * float(h.get('ltp', 0)) for h in holdings_data if h.get('ltp')),
-        'totalinvvalue': 0,  # Will be calculated from holdings
-        'totalprofitandloss': sum(float(h.get('pnl', 0)) for h in holdings_data),
-        'totalpnlpercentage': 0
+        'totalholdingvalue': total_holdingvalue,
+        'totalinvvalue': total_invvalue,
+        'totalprofitandloss': total_pnl,
+        'totalpnlpercentage': (total_pnl / total_invvalue * 100) if total_invvalue > 0 else 0,
     }
-    
-    # Calculate total investment value and percentage
+
+    # Allocation % per holding, weighted against current value (matches the
+    # default Allocation Basis on the page)
     for holding in holdings_data:
-        try:
-            pnl = float(holding.get('pnl', 0))
-            pnl_percent = float(holding.get('pnlpercent', 0))
-            if pnl_percent != 0:
-                inv_value = abs(pnl / (pnl_percent / 100))
-                statistics['totalinvvalue'] += inv_value
-        except (ValueError, TypeError, ZeroDivisionError):
-            pass
-    
-    if statistics['totalinvvalue'] > 0:
-        statistics['totalpnlpercentage'] = (statistics['totalprofitandloss'] / statistics['totalinvvalue']) * 100
+        holding['allocation'] = (
+            (holding.get('current', 0) / total_holdingvalue * 100) if total_holdingvalue > 0 else 0
+        )
     
     return render_template('trading/holdings.html',
                          holdings_data=holdings_data,
                          statistics=statistics,
                          single_account=len(accounts) == 1,
+                         selected_account_id=get_selected_account_id(),
                          accounts=current_user.get_active_accounts())
+
+
+def _find_open_position(client, symbol, exchange, product):
+    """Look up the live net quantity for one symbol/exchange/product from
+    the account's current positionbook. Returns None if not found/open."""
+    pos_response = client.positionbook()
+    if not pos_response or pos_response.get('status') != 'success':
+        return None
+    for p in pos_response.get('data', []) or []:
+        if p.get('symbol') == symbol and p.get('exchange') == exchange and p.get('product') == product:
+            try:
+                qty = float(p.get('quantity', 0) or 0)
+            except (ValueError, TypeError):
+                return None
+            return qty if qty != 0 else None
+    return None
+
+
+def _close_via_smart_order(client, symbol, exchange, product, quantity):
+    """Flatten a position by routing a placesmartorder targeting position_size=0."""
+    action = 'SELL' if quantity > 0 else 'BUY'
+    return client.placesmartorder(
+        strategy='AlgoMirror Manual Close',
+        symbol=symbol,
+        action=action,
+        exchange=exchange,
+        product=product,
+        quantity=abs(quantity),
+        position_size=0,
+    )
+
+
+@trading_bp.route('/close-position', methods=['POST'])
+@login_required
+@api_rate_limit()
+def close_position():
+    """Close a single open position by routing an opposite market order
+    (via placesmartorder position_size=0) through the owning account."""
+    payload = request.get_json(silent=True) or {}
+    account_id = payload.get('account_id')
+    symbol = payload.get('symbol')
+    exchange = payload.get('exchange')
+    product = payload.get('product')
+
+    if not all([account_id, symbol, exchange, product]):
+        return jsonify({'status': 'error', 'message': 'Missing account_id/symbol/exchange/product'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        current_qty = _find_open_position(client, symbol, exchange, product)
+        if current_qty is None:
+            return jsonify({'status': 'info', 'message': f'{symbol} has no open position to close'})
+
+        response = _close_via_smart_order(client, symbol, exchange, product, current_qty)
+        if response and response.get('status') == 'success':
+            return jsonify({
+                'status': 'success',
+                'message': f'Close order placed for {symbol}',
+                'orderid': response.get('orderid'),
+            })
+        return jsonify({
+            'status': 'error',
+            'message': (response or {}).get('message', 'Failed to place close order'),
+        }), 400
+    except Exception as e:
+        current_app.logger.error(f'Error closing position {symbol} for account {account_id}: {e}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@trading_bp.route('/close-all-positions', methods=['POST'])
+@login_required
+@api_rate_limit()
+def close_all_open_positions():
+    """Close every open position for the account(s) currently in view on the
+    Positions page (respects the same ?account= filter as the page itself)."""
+    accounts = get_selected_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No accounts to close positions for'}), 404
+
+    results = []
+    for account in accounts:
+        try:
+            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+            pos_response = client.positionbook()
+            if not pos_response or pos_response.get('status') != 'success':
+                continue
+            for p in pos_response.get('data', []) or []:
+                try:
+                    qty = float(p.get('quantity', 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+                if qty == 0:
+                    continue
+                symbol = p.get('symbol')
+                try:
+                    resp = _close_via_smart_order(client, symbol, p.get('exchange'), p.get('product'), qty)
+                    ok = bool(resp and resp.get('status') == 'success')
+                    results.append({
+                        'account': account.account_name,
+                        'symbol': symbol,
+                        'status': 'success' if ok else 'error',
+                        'message': '' if ok else (resp or {}).get('message', 'Failed to place close order'),
+                    })
+                except Exception as e:
+                    results.append({
+                        'account': account.account_name,
+                        'symbol': symbol,
+                        'status': 'error',
+                        'message': str(e),
+                    })
+        except Exception as e:
+            current_app.logger.error(f'Error closing positions for account {account.id}: {e}')
+
+    if not results:
+        return jsonify({'status': 'info', 'message': 'No open positions to close'})
+
+    failed = [r for r in results if r['status'] == 'error']
+    return jsonify({
+        'status': 'success' if not failed else 'partial',
+        'message': f'Closed {len(results) - len(failed)} of {len(results)} position(s)',
+        'results': results,
+    })
 
 
 # Option Chain Management Routes
