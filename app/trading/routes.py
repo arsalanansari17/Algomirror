@@ -272,10 +272,16 @@ def positions():
                 qty = float(position.get('quantity', 0))
                 avg_price = float(position.get('average_price', 0))
                 ltp = float(position.get('ltp', 0))
+                pnl = float(position.get('pnl', 0) or 0)
                 if qty != 0 and avg_price != 0:
-                    position['invested_value'] = abs(qty * avg_price)
+                    notional = abs(qty * avg_price)
+                    position['invested_value'] = notional
                     position['current_value'] = abs(qty * ltp)
-                    position['pnl_percentage'] = ((ltp - avg_price) / avg_price * 100) if avg_price else 0
+                    # Divide by absolute notional (not signed qty*avg_price) so the
+                    # sign always matches the currency P&L - for a short leg,
+                    # (ltp - avg_price) / avg_price is a price-change % that runs
+                    # opposite to the actual (profitable-when-price-falls) return.
+                    position['pnl_percentage'] = (pnl / notional * 100) if notional else 0
             except (ValueError, TypeError):
                 position['invested_value'] = 0
                 position['current_value'] = 0
@@ -301,16 +307,20 @@ def positions():
             enrich_positions(pos_list, account)
             positions_data.extend([p for p in pos_list if _position_is_open(p)])
     
-    # Calculate totals
+    # Calculate totals. Long/Short/Open counts (not Invested/Current Value)
+    # since summing abs(qty * avg_price) across mixed long+short option legs
+    # conflates sold-premium credits with bought-premium debits into a
+    # number that doesn't track Total P&L in any intuitive way - matches
+    # OpenAlgo's own Positions page, which doesn't show Invested/Current either.
     total_pnl = sum(float(p.get('pnl', 0)) for p in positions_data)
-    total_invested = sum(float(p.get('invested_value', 0)) for p in positions_data)
-    total_current = sum(float(p.get('current_value', 0)) for p in positions_data)
-    
+    long_count = sum(1 for p in positions_data if float(p.get('quantity', 0) or 0) > 0)
+    short_count = sum(1 for p in positions_data if float(p.get('quantity', 0) or 0) < 0)
+
     return render_template('trading/positions.html',
                          positions_data=positions_data,
                          total_pnl=total_pnl,
-                         total_invested=total_invested,
-                         total_current=total_current,
+                         long_count=long_count,
+                         short_count=short_count,
                          single_account=len(accounts) == 1,
                          selected_account_id=get_selected_account_id(),
                          accounts=current_user.get_active_accounts())

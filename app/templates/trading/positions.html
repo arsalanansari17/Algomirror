@@ -77,18 +77,18 @@
     <!-- Portfolio Summary -->
     <div class="stats shadow w-full">
         <div class="stat">
-            <div class="stat-title">Total Positions</div>
+            <div class="stat-title">Open Positions</div>
             <div class="stat-value" id="statTotalPositions">{{ positions_data|length }}</div>
         </div>
 
         <div class="stat">
-            <div class="stat-title">Total Invested</div>
-            <div class="stat-value text-primary">₹{{ "%.2f"|format(total_invested) }}</div>
+            <div class="stat-title">Long</div>
+            <div class="stat-value text-success">{{ long_count }}</div>
         </div>
 
         <div class="stat">
-            <div class="stat-title">Current Value</div>
-            <div class="stat-value text-info">₹{{ "%.2f"|format(total_current) }}</div>
+            <div class="stat-title">Short</div>
+            <div class="stat-value text-error">{{ short_count }}</div>
         </div>
 
         <div class="stat">
@@ -96,9 +96,6 @@
             <div class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(total_pnl) }}
             </div>
-            {% if total_invested > 0 %}
-            <div class="stat-desc">{{ "%.2f"|format((total_pnl / total_invested) * 100) }}%</div>
-            {% endif %}
         </div>
     </div>
 
