@@ -56,42 +56,43 @@
 
     <div id="pnlCurveError" class="hidden alert alert-error"></div>
 
-    <div id="pnlCurveContent" class="hidden space-y-4">
-        <!-- Compact stat row - each stat keeps its own pane, but value+time
-             share one line within that pane instead of stacking. -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Current</div>
-                <div id="pnlCurveCurrent" class="text-2xl font-bold font-mono"></div>
-            </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Max</div>
-                <div class="flex items-center gap-1.5">
-                    <span id="pnlCurveMax" class="text-2xl font-bold font-mono text-success"></span>
-                    <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
-                </div>
-            </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Min</div>
-                <div class="flex items-center gap-1.5">
-                    <span id="pnlCurveMin" class="text-2xl font-bold font-mono text-error"></span>
-                    <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
-                </div>
-            </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Max Drawdown</div>
-                <div id="pnlCurveDrawdown" class="text-2xl font-bold font-mono text-error"></div>
-            </div>
-        </div>
-
-        <!-- Chart card -->
+    <div id="pnlCurveContent" class="hidden">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
                 <div id="pnlCurveLegend" class="flex items-center gap-4 text-sm text-base-content/60 mb-2"></div>
 
-                <div id="pnlCurveChartWrap" class="w-full relative">
-                    <div id="pnlCurveChart" class="w-full" style="height: 480px;"></div>
-                    <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
+                <div class="flex flex-col lg:flex-row gap-4">
+                    <!-- Stat panes: a row on mobile, a column to the left of
+                         the chart from lg: up. -->
+                    <div class="grid grid-cols-2 gap-3 lg:flex lg:flex-col lg:w-48 lg:shrink-0">
+                        <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                            <div class="text-xs text-base-content/60">Current</div>
+                            <div id="pnlCurveCurrent" class="text-2xl font-bold font-mono"></div>
+                        </div>
+                        <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                            <div class="text-xs text-base-content/60">Max</div>
+                            <div class="flex items-center gap-1.5">
+                                <span id="pnlCurveMax" class="text-2xl font-bold font-mono text-success"></span>
+                                <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
+                            </div>
+                        </div>
+                        <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                            <div class="text-xs text-base-content/60">Min</div>
+                            <div class="flex items-center gap-1.5">
+                                <span id="pnlCurveMin" class="text-2xl font-bold font-mono text-error"></span>
+                                <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
+                            </div>
+                        </div>
+                        <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                            <div class="text-xs text-base-content/60">Max Drawdown</div>
+                            <div id="pnlCurveDrawdown" class="text-2xl font-bold font-mono text-error"></div>
+                        </div>
+                    </div>
+
+                    <div id="pnlCurveChartWrap" class="flex-1 min-w-0 relative">
+                        <div id="pnlCurveChart" class="w-full" style="height: 480px;"></div>
+                        <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -106,6 +107,10 @@ let pnlChartInstance = null;
 let pnlBaselineSeries = null;
 let lastPnlData = null;
 let selectedPnlAccount = 'all';
+// Captured from the DOM (already correctly HTML-entity-decoded by the
+// browser) instead of re-embedding the Jinja value into a JS string, which
+// would double-escape "&" into the literal text "&amp;".
+const defaultPnlTitle = document.getElementById('pnlCurveTitle').textContent;
 
 function formatRupee(value) {
     const sign = value >= 0 ? '+' : '';
@@ -289,7 +294,7 @@ function renderForSelection() {
     const titleEl = document.getElementById('pnlCurveTitle');
     if (titleEl) {
         titleEl.textContent = selectedPnlAccount === 'all'
-            ? '{{ "Combined Intraday P&L" if accounts|length > 1 else "Intraday P&L" }}'
+            ? defaultPnlTitle
             : `${label} - Intraday P&L`;
     }
 
