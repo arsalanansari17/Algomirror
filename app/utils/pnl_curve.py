@@ -402,7 +402,7 @@ def compute_combined_pnl(accounts):
 
     empty_result = {
         'current_mtm': 0, 'max_mtm': 0, 'max_mtm_time': None,
-        'min_mtm': 0, 'min_mtm_time': None, 'max_drawdown': 0,
+        'min_mtm': 0, 'min_mtm_time': None, 'max_drawdown': 0, 'max_drawdown_time': None,
         'pnl_series': [], 'drawdown_series': [], 'per_account': per_account,
     }
     if combined is None:
@@ -440,6 +440,7 @@ def compute_combined_pnl(accounts):
         'min_mtm': round(float(combined['Total_PnL'].min()), 2),
         'min_mtm_time': combined['Total_PnL'].idxmin().strftime('%H:%M'),
         'max_drawdown': round(float(combined['Drawdown'].min()), 2),
+        'max_drawdown_time': combined['Drawdown'].idxmin().strftime('%H:%M'),
         'pnl_series': pnl_series,
         'drawdown_series': drawdown_series,
         'per_account': per_account,
