@@ -393,6 +393,7 @@ def compute_combined_pnl(accounts):
             'account_id': account.id,
             'account_name': account.account_name,
             'current_pnl': round(current_value, 2),
+            'series': [],
         })
         if series is None or series.empty:
             continue
@@ -408,17 +409,29 @@ def compute_combined_pnl(accounts):
         return empty_result
 
     combined = combined.sort_index().ffill().fillna(0)
-    combined['Total_PnL'] = combined.sum(axis=1)
+    account_cols = list(combined.columns)
+    combined['Total_PnL'] = combined[account_cols].sum(axis=1)
     combined['Peak'] = combined['Total_PnL'].cummax()
     combined['Drawdown'] = combined['Total_PnL'] - combined['Peak']
     if combined.empty:
         return empty_result
 
-    pnl_series, drawdown_series = [], []
-    for idx, row in combined.iterrows():
-        ts_ms = int(idx.tz_convert('UTC').timestamp() * 1000) if getattr(idx, 'tz', None) is not None else int(idx.timestamp() * 1000)
-        pnl_series.append({'time': ts_ms, 'value': round(float(row['Total_PnL']), 2)})
-        drawdown_series.append({'time': ts_ms, 'value': round(float(row['Drawdown']), 2)})
+    def _series_to_points(col):
+        points = []
+        for idx, val in combined[col].items():
+            ts_ms = int(idx.tz_convert('UTC').timestamp() * 1000) if getattr(idx, 'tz', None) is not None else int(idx.timestamp() * 1000)
+            points.append({'time': ts_ms, 'value': round(float(val), 2)})
+        return points
+
+    pnl_series = _series_to_points('Total_PnL')
+    drawdown_series = _series_to_points('Drawdown')
+
+    # Each account's own aligned series (zero-filled before that account's
+    # first trade, same timestamps as the combined curve) so the frontend can
+    # overlay per-account lines and show a per-account breakdown on hover.
+    for entry in per_account:
+        col = f"account_{entry['account_id']}"
+        entry['series'] = _series_to_points(col) if col in account_cols else []
 
     return {
         'current_mtm': round(float(combined['Total_PnL'].iloc[-1]), 2),

@@ -315,7 +315,18 @@
         <form method="dialog">
             <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
         </form>
-        <h3 class="font-bold text-lg mb-1">{{ "Combined Intraday P&L" if accounts|length > 1 else "Intraday P&L" }}</h3>
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-1 pr-8">
+            <h3 class="font-bold text-lg">{{ "Combined Intraday P&L" if accounts|length > 1 else "Intraday P&L" }}</h3>
+            <div class="flex items-center gap-2 text-xs text-base-content/50">
+                <span id="pnlCurveUpdatedAt"></span>
+                <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="btn btn-ghost btn-xs" title="Recalculate">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Recalculate
+                </button>
+            </div>
+        </div>
         <p class="text-sm text-base-content/60 mb-4">
             {{ "Mark-to-market curve summed across all active accounts, today only." if accounts|length > 1 else "Mark-to-market curve for today." }}
         </p>
@@ -347,10 +358,14 @@
             </div>
 
             {% if accounts|length > 1 %}
-            <div id="pnlCurvePerAccount" class="flex flex-wrap gap-2 mb-4"></div>
+            <div id="pnlCurvePerAccount" class="flex flex-wrap gap-3 mb-3"></div>
             {% endif %}
 
-            <div id="pnlCurveChart" class="w-full" style="height: 320px;"></div>
+            <div id="pnlCurveChartWrap" class="w-full relative">
+                <div id="pnlCurveChart" class="w-full" style="height: 320px;"></div>
+                <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
+            </div>
+            <p class="text-xs text-base-content/40 mt-2">Shaded red band along the bottom is drawdown from the day's peak (right-hand scale).</p>
         </div>
 
         <div class="modal-action">
@@ -738,6 +753,7 @@ function exportToCSV(type) {
 
 // --- Combined intraday P&L curve ---
 let pnlChartInstance = null;
+const PNL_ACCOUNT_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#14b8a6'];
 
 function formatRupee(value) {
     const sign = value >= 0 ? '+' : '';
@@ -753,10 +769,12 @@ async function loadPnlCurve() {
     const loadingEl = document.getElementById('pnlCurveLoading');
     const errorEl = document.getElementById('pnlCurveError');
     const contentEl = document.getElementById('pnlCurveContent');
+    const refreshBtn = document.getElementById('pnlCurveRefreshBtn');
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
     contentEl.classList.add('hidden');
+    refreshBtn.disabled = true;
 
     try {
         const response = await fetch('{{ url_for("trading.pnl_combined") }}');
@@ -766,11 +784,14 @@ async function loadPnlCurve() {
         }
         contentEl.classList.remove('hidden');
         renderPnlCurve(result.data);
+        document.getElementById('pnlCurveUpdatedAt').textContent = 'Updated ' +
+            new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     } catch (e) {
         errorEl.textContent = e.message || 'Failed to load P&L data';
         errorEl.classList.remove('hidden');
     } finally {
         loadingEl.classList.add('hidden');
+        refreshBtn.disabled = false;
     }
 }
 
@@ -783,17 +804,21 @@ function renderPnlCurve(data) {
     document.getElementById('pnlCurveMin').textContent = formatRupee(data.min_mtm);
     document.getElementById('pnlCurveDrawdown').textContent = formatRupee(data.max_drawdown);
 
+    const perAccount = data.per_account || [];
     const perAccountEl = document.getElementById('pnlCurvePerAccount');
     if (perAccountEl) {
-        perAccountEl.innerHTML = (data.per_account || []).map(a => `
-            <span class="badge badge-lg ${a.current_pnl >= 0 ? 'badge-success' : 'badge-error'} badge-outline gap-1">
+        perAccountEl.innerHTML = perAccount.map((a, i) => `
+            <span class="badge badge-lg ${a.current_pnl >= 0 ? 'badge-success' : 'badge-error'} badge-outline gap-1.5">
+                ${perAccount.length > 1 ? `<span class="inline-block w-2 h-2 rounded-full" style="background:${PNL_ACCOUNT_COLORS[i % PNL_ACCOUNT_COLORS.length]}"></span>` : ''}
                 ${a.account_name}: ${formatRupee(a.current_pnl)}
             </span>
         `).join('');
     }
 
     const chartContainer = document.getElementById('pnlCurveChart');
+    const tooltipEl = document.getElementById('pnlCurveTooltip');
     chartContainer.innerHTML = '';
+    tooltipEl.classList.add('hidden');
 
     if (pnlChartInstance) {
         pnlChartInstance.remove();
@@ -818,19 +843,92 @@ function renderPnlCurve(data) {
             horzLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
         },
         timeScale: { timeVisible: true, secondsVisible: false },
-        rightPriceScale: { borderVisible: false },
+        // Reserve the bottom ~30% of the pane for the drawdown series (own
+        // left scale) so it reads like a sub-panel without needing the
+        // separate-panes API - same trick charting libs use for RSI/volume.
+        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.32 } },
+        leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.75, bottom: 0.02 } },
     });
 
-    const series = chart.addSeries(LightweightCharts.AreaSeries, {
-        lineColor: '#3b82f6',
-        topColor: 'rgba(59, 130, 246, 0.3)',
-        bottomColor: 'rgba(59, 130, 246, 0.0)',
+    // Baseline series: green fill/line above zero, red below - so the chart
+    // itself shows profit/loss at a glance instead of a flat single color.
+    const baselineSeries = chart.addSeries(LightweightCharts.BaselineSeries, {
+        baseValue: { type: 'price', price: 0 },
+        topLineColor: '#22c55e',
+        topFillColor1: 'rgba(34, 197, 94, 0.28)',
+        topFillColor2: 'rgba(34, 197, 94, 0.05)',
+        bottomLineColor: '#ef4444',
+        bottomFillColor1: 'rgba(239, 68, 68, 0.05)',
+        bottomFillColor2: 'rgba(239, 68, 68, 0.28)',
         lineWidth: 2,
+        priceScaleId: 'right',
     });
+    baselineSeries.setData(data.pnl_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
 
-    series.setData(data.pnl_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+    // Thin per-account overlay lines (only worth showing when there's more
+    // than one account - otherwise it'd just duplicate the combined line).
+    const accountSeriesRefs = [];
+    if (perAccount.length > 1) {
+        perAccount.forEach((a, i) => {
+            if (!a.series || a.series.length === 0) return;
+            const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                color: PNL_ACCOUNT_COLORS[i % PNL_ACCOUNT_COLORS.length],
+                lineWidth: 1,
+                priceScaleId: 'right',
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+            lineSeries.setData(a.series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+            accountSeriesRefs.push({ series: lineSeries, name: a.account_name, color: PNL_ACCOUNT_COLORS[i % PNL_ACCOUNT_COLORS.length] });
+        });
+    }
+
+    if (data.drawdown_series && data.drawdown_series.length > 0) {
+        const drawdownSeries = chart.addSeries(LightweightCharts.AreaSeries, {
+            lineColor: 'rgba(239, 68, 68, 0.7)',
+            topColor: 'rgba(239, 68, 68, 0.25)',
+            bottomColor: 'rgba(239, 68, 68, 0.05)',
+            lineWidth: 1,
+            priceScaleId: 'left',
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+        drawdownSeries.setData(data.drawdown_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+    }
+
     chart.timeScale().fitContent();
     pnlChartInstance = chart;
+
+    chart.subscribeCrosshairMove(param => {
+        if (!param.point || !param.time) {
+            tooltipEl.classList.add('hidden');
+            return;
+        }
+        const combinedPoint = param.seriesData.get(baselineSeries);
+        if (!combinedPoint) {
+            tooltipEl.classList.add('hidden');
+            return;
+        }
+        const timeStr = new Date(param.time * 1000).toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        });
+        let html = `<div class="font-semibold">${timeStr} IST</div>`;
+        html += `<div class="${combinedPoint.value >= 0 ? 'text-success' : 'text-error'} font-medium">Combined: ${formatRupee(combinedPoint.value)}</div>`;
+        accountSeriesRefs.forEach(ref => {
+            const d = param.seriesData.get(ref.series);
+            if (d) {
+                html += `<div style="color:${ref.color}">${ref.name}: ${formatRupee(d.value)}</div>`;
+            }
+        });
+        tooltipEl.innerHTML = html;
+        tooltipEl.classList.remove('hidden');
+
+        const wrapWidth = chartContainer.clientWidth;
+        let left = param.point.x + 16;
+        if (left + 170 > wrapWidth) left = Math.max(0, param.point.x - 170);
+        tooltipEl.style.left = left + 'px';
+        tooltipEl.style.top = '8px';
+    });
 }
 
 pnlCurveModal.addEventListener('close', () => {
@@ -838,6 +936,7 @@ pnlCurveModal.addEventListener('close', () => {
         pnlChartInstance.remove();
         pnlChartInstance = null;
     }
+    document.getElementById('pnlCurveTooltip').classList.add('hidden');
 });
 
 window.addEventListener('resize', () => {
