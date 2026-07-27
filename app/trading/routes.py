@@ -274,6 +274,7 @@ def positions():
                 avg_price = float(position.get('average_price', 0))
                 ltp = float(position.get('ltp', 0))
                 pnl = float(position.get('pnl', 0) or 0)
+                position['is_closed'] = (qty == 0)
                 if qty != 0 and avg_price != 0:
                     notional = abs(qty * avg_price)
                     position['invested_value'] = notional
@@ -284,6 +285,7 @@ def positions():
                     # opposite to the actual (profitable-when-price-falls) return.
                     position['pnl_percentage'] = (pnl / notional * 100) if notional else 0
             except (ValueError, TypeError):
+                position['is_closed'] = False
                 position['invested_value'] = 0
                 position['current_value'] = 0
                 position['pnl_percentage'] = 0
@@ -292,8 +294,10 @@ def positions():
         if response and response.get('status') == 'success':
             pos_list = response.get('data', [])
             enrich_positions(pos_list, account)
-            # Show only open positions; hide squared-off (quantity 0) rows
-            positions_data.extend([p for p in pos_list if _position_is_open(p)])
+            # Keep squared-off (quantity 0) rows too - shown dimmed/"Closed" in
+            # the template - so today's realized P&L from a closed position
+            # doesn't just disappear from the page and from Total P&L below.
+            positions_data.extend(pos_list)
 
             # Update cache (store full list so cache stays complete)
             account.last_positions_data = pos_list
@@ -306,20 +310,25 @@ def positions():
             # Use cached data if API fails
             pos_list = account.last_positions_data
             enrich_positions(pos_list, account)
-            positions_data.extend([p for p in pos_list if _position_is_open(p)])
-    
+            positions_data.extend(pos_list)
+
     # Calculate totals. Long/Short/Open counts (not Invested/Current Value)
     # since summing abs(qty * avg_price) across mixed long+short option legs
     # conflates sold-premium credits with bought-premium debits into a
     # number that doesn't track Total P&L in any intuitive way - matches
     # OpenAlgo's own Positions page, which doesn't show Invested/Current either.
+    # Total P&L sums every row (open + closed) so a squared-off position's
+    # realized P&L is still reflected; Open/Long/Short counts only count
+    # positions that are still actually open.
     total_pnl = sum(float(p.get('pnl', 0)) for p in positions_data)
-    long_count = sum(1 for p in positions_data if float(p.get('quantity', 0) or 0) > 0)
-    short_count = sum(1 for p in positions_data if float(p.get('quantity', 0) or 0) < 0)
+    open_positions = [p for p in positions_data if _position_is_open(p)]
+    long_count = sum(1 for p in open_positions if float(p.get('quantity', 0) or 0) > 0)
+    short_count = sum(1 for p in open_positions if float(p.get('quantity', 0) or 0) < 0)
 
     return render_template('trading/positions.html',
                          positions_data=positions_data,
                          total_pnl=total_pnl,
+                         open_count=len(open_positions),
                          long_count=long_count,
                          short_count=short_count,
                          single_account=len(accounts) == 1,

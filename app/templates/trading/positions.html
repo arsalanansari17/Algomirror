@@ -87,7 +87,7 @@
     <div class="stats shadow w-full">
         <div class="stat">
             <div class="stat-title">Open Positions</div>
-            <div class="stat-value" id="statTotalPositions">{{ positions_data|length }}</div>
+            <div class="stat-value" id="statTotalPositions">{{ open_count }}</div>
         </div>
 
         <div class="stat">
@@ -148,11 +148,12 @@
                     <tbody id="positionsTbody">
                         {% for position in positions_data %}
                         {% set qty = position.get('quantity', 0)|float %}
-                        <tr class="hover"
+                        {% set is_closed = position.get('is_closed', qty == 0) %}
+                        <tr class="hover {{ 'opacity-60' if is_closed else '' }}"
                             data-symbol="{{ position.get('symbol', '')|lower }}"
                             data-exchange="{{ position.get('exchange', '') }}"
                             data-product="{{ position.get('product', '') }}"
-                            data-direction="{{ 'LONG' if qty > 0 else 'SHORT' }}"
+                            data-direction="{{ 'CLOSED' if is_closed else ('LONG' if qty > 0 else 'SHORT') }}"
                             data-qty="{{ qty }}"
                             data-avgprice="{{ position.get('average_price', 0) or 0 }}"
                             data-pnl="{{ position.get('pnl', 0) or 0 }}"
@@ -169,10 +170,13 @@
                                 </div>
                             </td>
                             {% endif %}
-                            <td class="font-semibold">{{ position.get('symbol', '') }}</td>
+                            <td class="font-semibold">
+                                {{ position.get('symbol', '') }}
+                                {% if is_closed %}<span class="badge badge-xs badge-ghost ml-1">Closed</span>{% endif %}
+                            </td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('exchange', '') }}</span></td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('product', '') }}</span></td>
-                            <td class="font-mono text-right {{ 'text-success' if qty > 0 else 'text-error' }}">
+                            <td class="font-mono text-right {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}">
                                 {{ position.get('quantity', 0) }}
                             </td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
@@ -185,6 +189,7 @@
                             </td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
                             <td class="text-right">
+                                {% if not is_closed %}
                                 <button type="button"
                                         class="btn btn-ghost btn-xs text-error"
                                         title="Close position"
@@ -193,6 +198,9 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                 </button>
+                                {% else %}
+                                <span class="text-xs text-base-content/30">—</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -756,8 +764,8 @@ async function loadPnlCurve() {
         if (result.status !== 'success') {
             throw new Error(result.message || 'Failed to load P&L data');
         }
-        renderPnlCurve(result.data);
         contentEl.classList.remove('hidden');
+        renderPnlCurve(result.data);
     } catch (e) {
         errorEl.textContent = e.message || 'Failed to load P&L data';
         errorEl.classList.remove('hidden');
