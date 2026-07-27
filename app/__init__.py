@@ -266,6 +266,20 @@ def create_app(config_name=None):
         from app.models import AppSettings
         return dict(strategy_engine_enabled=AppSettings.get().strategy_engine_enabled)
 
+    # Cache-busting for static assets. nginx serves /static/ with
+    # `Cache-Control: public, max-age=2592000, immutable` (30 days) for
+    # performance, which means browsers never even re-check compiled.css
+    # after a deploy - a query param keyed on the file's mtime changes the
+    # URL (and therefore the browser's cache key) every time the file
+    # actually changes, without needing to touch that nginx policy.
+    @app.template_global()
+    def asset_version(filename):
+        try:
+            path = os.path.join(app.static_folder, filename)
+            return str(int(os.path.getmtime(path)))
+        except OSError:
+            return '0'
+
     # CSRF error handler - redirects to login with message when session expires
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
