@@ -37,6 +37,15 @@
                 <span id="positionsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
             </button>
 
+            {% if accounts %}
+            <button onclick="openPnlCurveModal()" class="btn btn-outline btn-sm h-9">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                {{ "Combined P&L" if accounts|length > 1 else "Intraday P&L" }}
+            </button>
+            {% endif %}
+
             <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -292,6 +301,60 @@
     </form>
 </dialog>
 
+<!-- Intraday P&L Curve Dialog -->
+<dialog id="pnlCurveModal" class="modal">
+    <div class="modal-box max-w-4xl">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form>
+        <h3 class="font-bold text-lg mb-1">{{ "Combined Intraday P&L" if accounts|length > 1 else "Intraday P&L" }}</h3>
+        <p class="text-sm text-base-content/60 mb-4">
+            {{ "Mark-to-market curve summed across all active accounts, today only." if accounts|length > 1 else "Mark-to-market curve for today." }}
+        </p>
+
+        <div id="pnlCurveLoading" class="flex items-center justify-center py-16">
+            <span class="loading loading-spinner loading-lg"></span>
+        </div>
+
+        <div id="pnlCurveError" class="hidden alert alert-error"></div>
+
+        <div id="pnlCurveContent" class="hidden">
+            <div class="stats shadow w-full mb-4 stats-vertical sm:stats-horizontal">
+                <div class="stat py-3">
+                    <div class="stat-title text-xs">Current</div>
+                    <div id="pnlCurveCurrent" class="stat-value text-lg"></div>
+                </div>
+                <div class="stat py-3">
+                    <div class="stat-title text-xs">Max</div>
+                    <div id="pnlCurveMax" class="stat-value text-lg text-success"></div>
+                </div>
+                <div class="stat py-3">
+                    <div class="stat-title text-xs">Min</div>
+                    <div id="pnlCurveMin" class="stat-value text-lg text-error"></div>
+                </div>
+                <div class="stat py-3">
+                    <div class="stat-title text-xs">Max Drawdown</div>
+                    <div id="pnlCurveDrawdown" class="stat-value text-lg text-error"></div>
+                </div>
+            </div>
+
+            {% if accounts|length > 1 %}
+            <div id="pnlCurvePerAccount" class="flex flex-wrap gap-2 mb-4"></div>
+            {% endif %}
+
+            <div id="pnlCurveChart" class="w-full" style="height: 320px;"></div>
+        </div>
+
+        <div class="modal-action">
+            <button type="button" class="btn btn-sm" onclick="pnlCurveModal.close()">Close</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script>
 const POSITIONS_STORAGE_KEY = 'algomirror_positions_prefs';
 
@@ -664,5 +727,116 @@ function exportToCSV(type) {
     link.click();
     document.body.removeChild(link);
 }
+
+// --- Combined intraday P&L curve ---
+let pnlChartInstance = null;
+
+function formatRupee(value) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}₹${Number(value).toFixed(2)}`;
+}
+
+function openPnlCurveModal() {
+    pnlCurveModal.showModal();
+    loadPnlCurve();
+}
+
+async function loadPnlCurve() {
+    const loadingEl = document.getElementById('pnlCurveLoading');
+    const errorEl = document.getElementById('pnlCurveError');
+    const contentEl = document.getElementById('pnlCurveContent');
+
+    loadingEl.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+    contentEl.classList.add('hidden');
+
+    try {
+        const response = await fetch('{{ url_for("trading.pnl_combined") }}');
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'Failed to load P&L data');
+        }
+        renderPnlCurve(result.data);
+        contentEl.classList.remove('hidden');
+    } catch (e) {
+        errorEl.textContent = e.message || 'Failed to load P&L data';
+        errorEl.classList.remove('hidden');
+    } finally {
+        loadingEl.classList.add('hidden');
+    }
+}
+
+function renderPnlCurve(data) {
+    const currentEl = document.getElementById('pnlCurveCurrent');
+    currentEl.textContent = formatRupee(data.current_mtm);
+    currentEl.classList.toggle('text-success', data.current_mtm >= 0);
+    currentEl.classList.toggle('text-error', data.current_mtm < 0);
+    document.getElementById('pnlCurveMax').textContent = formatRupee(data.max_mtm);
+    document.getElementById('pnlCurveMin').textContent = formatRupee(data.min_mtm);
+    document.getElementById('pnlCurveDrawdown').textContent = formatRupee(data.max_drawdown);
+
+    const perAccountEl = document.getElementById('pnlCurvePerAccount');
+    if (perAccountEl) {
+        perAccountEl.innerHTML = (data.per_account || []).map(a => `
+            <span class="badge badge-lg ${a.current_pnl >= 0 ? 'badge-success' : 'badge-error'} badge-outline gap-1">
+                ${a.account_name}: ${formatRupee(a.current_pnl)}
+            </span>
+        `).join('');
+    }
+
+    const chartContainer = document.getElementById('pnlCurveChart');
+    chartContainer.innerHTML = '';
+
+    if (pnlChartInstance) {
+        pnlChartInstance.remove();
+        pnlChartInstance = null;
+    }
+
+    if (!data.pnl_series || data.pnl_series.length === 0) {
+        chartContainer.innerHTML = '<div class="flex items-center justify-center h-full text-base-content/50">No trades or open positions today</div>';
+        return;
+    }
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const chart = LightweightCharts.createChart(chartContainer, {
+        width: chartContainer.clientWidth,
+        height: 320,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#a6adbb' : '#4b5563',
+        },
+        grid: {
+            vertLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
+            horzLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
+        },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+
+    const series = chart.addSeries(LightweightCharts.AreaSeries, {
+        lineColor: '#3b82f6',
+        topColor: 'rgba(59, 130, 246, 0.3)',
+        bottomColor: 'rgba(59, 130, 246, 0.0)',
+        lineWidth: 2,
+    });
+
+    series.setData(data.pnl_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+    chart.timeScale().fitContent();
+    pnlChartInstance = chart;
+}
+
+pnlCurveModal.addEventListener('close', () => {
+    if (pnlChartInstance) {
+        pnlChartInstance.remove();
+        pnlChartInstance = null;
+    }
+});
+
+window.addEventListener('resize', () => {
+    const chartContainer = document.getElementById('pnlCurveChart');
+    if (pnlChartInstance && chartContainer && chartContainer.isConnected) {
+        pnlChartInstance.applyOptions({ width: chartContainer.clientWidth });
+    }
+});
 </script>
 {% endblock %}

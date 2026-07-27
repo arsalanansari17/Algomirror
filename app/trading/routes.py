@@ -8,7 +8,8 @@ from app.utils.option_chain import OptionChainManager
 from app.utils.websocket_manager import ProfessionalWebSocketManager
 from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
-from app.utils.rate_limiter import api_rate_limit
+from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit
+from app.utils.pnl_curve import compute_combined_pnl
 from datetime import datetime
 import json
 import time
@@ -324,6 +325,28 @@ def positions():
                          single_account=len(accounts) == 1,
                          selected_account_id=get_selected_account_id(),
                          accounts=current_user.get_active_accounts())
+
+
+@trading_bp.route('/api/pnl-combined')
+@login_required
+@heavy_rate_limit()
+def pnl_combined():
+    """Combined intraday mark-to-market P&L curve across every active
+    account, computed live from each account's tradebook/positionbook/1m
+    candles (see app/utils/pnl_curve.py). Nothing here is persisted -
+    intraday only, rebuilt fresh on every call."""
+    accounts = current_user.get_active_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
+
+    try:
+        data = compute_combined_pnl(accounts)
+    except Exception as e:
+        current_app.logger.exception(f'Error computing combined intraday P&L: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L'}), 500
+
+    return jsonify({'status': 'success', 'data': data})
+
 
 @trading_bp.route('/holdings')
 @login_required
