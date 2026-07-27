@@ -42,38 +42,37 @@
     <div id="pnlCurveError" class="hidden alert alert-error"></div>
 
     <div id="pnlCurveContent" class="hidden space-y-4">
-        <!-- Compact stat row -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Current</div>
-                <div id="pnlCurveCurrent" class="text-xl font-bold font-mono"></div>
+        <!-- Compact stat row - one line, time shown inline with the value -->
+        <div class="flex flex-wrap items-baseline gap-x-8 gap-y-1 border border-base-300 rounded-lg px-4 py-3 bg-base-100">
+            <div class="flex items-baseline gap-1.5">
+                <span class="text-xs text-base-content/60">Current</span>
+                <span id="pnlCurveCurrent" class="text-xl font-bold font-mono"></span>
             </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Max</div>
-                <div id="pnlCurveMax" class="text-xl font-bold font-mono text-success"></div>
-                <div id="pnlCurveMaxTime" class="text-xs text-base-content/50"></div>
+            <div class="flex items-baseline gap-1.5">
+                <span class="text-xs text-base-content/60">Max</span>
+                <span id="pnlCurveMax" class="text-xl font-bold font-mono text-success"></span>
+                <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
             </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Min</div>
-                <div id="pnlCurveMin" class="text-xl font-bold font-mono text-error"></div>
-                <div id="pnlCurveMinTime" class="text-xs text-base-content/50"></div>
+            <div class="flex items-baseline gap-1.5">
+                <span class="text-xs text-base-content/60">Min</span>
+                <span id="pnlCurveMin" class="text-xl font-bold font-mono text-error"></span>
+                <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
             </div>
-            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
-                <div class="text-xs text-base-content/60">Max Drawdown</div>
-                <div id="pnlCurveDrawdown" class="text-xl font-bold font-mono text-error"></div>
+            <div class="flex items-baseline gap-1.5">
+                <span class="text-xs text-base-content/60">Max Drawdown</span>
+                <span id="pnlCurveDrawdown" class="text-xl font-bold font-mono text-error"></span>
             </div>
         </div>
 
         <!-- Chart card -->
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
-                <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
-                    <div id="pnlCurveToggles" class="flex flex-wrap items-center gap-4 text-sm"></div>
-                    <button type="button" onclick="resetPnlCurveZoom()" class="btn btn-ghost btn-xs" title="Reset zoom">
+                <div class="flex flex-wrap items-center gap-4 text-sm mb-2">
+                    <div id="pnlCurveToggles" class="flex flex-wrap items-center gap-4"></div>
+                    <button type="button" onclick="resetPnlCurveZoom()" class="btn btn-ghost btn-xs btn-circle" title="Reset zoom">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 3h6m0 0v6m0-6L14 10M9 21H3m0 0v-6m0 6l7-7" />
                         </svg>
-                        Reset Zoom
                     </button>
                 </div>
 
