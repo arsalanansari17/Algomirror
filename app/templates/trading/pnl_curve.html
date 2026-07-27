@@ -65,6 +65,10 @@
                     <!-- Stat panes: a row on mobile, a column to the left of
                          the chart from lg: up. -->
                     <div class="grid grid-cols-2 gap-3 lg:flex lg:flex-col lg:w-48 lg:shrink-0">
+                        <div class="col-span-2 lg:mb-1">
+                            <div class="font-bold text-base-content">AlgoMirror</div>
+                            <div class="text-xs text-base-content/50">Powered by OpenAlgo</div>
+                        </div>
                         <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
                             <div class="text-xs text-base-content/60">Current</div>
                             <div id="pnlCurveCurrent" class="text-2xl font-bold font-mono"></div>
@@ -90,7 +94,7 @@
                     </div>
 
                     <div id="pnlCurveChartWrap" class="flex-1 min-w-0 relative">
-                        <div id="pnlCurveChart" class="w-full" style="height: 480px;"></div>
+                        <div id="pnlCurveChart" class="w-full" style="height: calc(100vh - 280px); min-height: 420px;"></div>
                         <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
                     </div>
                 </div>
@@ -333,10 +337,11 @@ function drawPnlChart(series, drawdownSeries) {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const chart = LightweightCharts.createChart(chartContainer, {
         width: chartContainer.clientWidth,
-        height: 480,
+        height: chartContainer.clientHeight,
         layout: {
             background: { color: 'transparent' },
             textColor: isDark ? '#a6adbb' : '#4b5563',
+            attributionLogo: false,
         },
         grid: {
             vertLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
@@ -421,7 +426,12 @@ function drawPnlChart(series, drawdownSeries) {
 window.addEventListener('resize', () => {
     const chartContainer = document.getElementById('pnlCurveChart');
     if (pnlChartInstance && chartContainer && chartContainer.isConnected) {
-        pnlChartInstance.applyOptions({ width: chartContainer.clientWidth });
+        // Height is viewport-relative (not fixed) now, so both dimensions
+        // can change on resize, not just width.
+        pnlChartInstance.applyOptions({
+            width: chartContainer.clientWidth,
+            height: chartContainer.clientHeight,
+        });
     }
 });
 
