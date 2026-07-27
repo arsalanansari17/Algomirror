@@ -336,6 +336,15 @@ def positions():
                          accounts=current_user.get_active_accounts())
 
 
+@trading_bp.route('/pnl-curve')
+@login_required
+def pnl_curve_page():
+    """Intraday combined P&L curve page - see app/utils/pnl_curve.py for
+    the computation and /api/pnl-combined for the data this page fetches."""
+    accounts = current_user.get_active_accounts()
+    return render_template('trading/pnl_curve.html', accounts=accounts)
+
+
 @trading_bp.route('/api/pnl-combined')
 @login_required
 @heavy_rate_limit()
