@@ -1,0 +1,318 @@
+{% extends "layout.html" %}
+
+{% block title %}Intraday P&L - AlgoMirror{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="flex justify-between items-center flex-wrap gap-3">
+        <div>
+            <h1 class="text-3xl font-bold">{{ "Combined Intraday P&L" if accounts|length > 1 else "Intraday P&L" }}</h1>
+            <p class="text-base-content/70 mt-1">
+                {{ "Mark-to-market curve summed across all active accounts, today only." if accounts|length > 1 else "Mark-to-market curve for today." }}
+            </p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span id="pnlCurveUpdatedAt" class="text-xs text-base-content/50"></span>
+            <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="btn btn-primary btn-sm">
+                <svg id="pnlCurveRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span id="pnlCurveRefreshLabel">Refresh</span>
+            </button>
+        </div>
+    </div>
+
+    {% if not accounts %}
+    <div class="card bg-base-100 shadow-xl">
+        <div class="card-body text-center py-16">
+            <h2 class="text-2xl font-bold mb-2">No Active Accounts</h2>
+            <p class="text-base-content/70">Add a trading account to see its intraday P&amp;L here.</p>
+            <div class="mt-6">
+                <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">Add Account</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+
+    <div id="pnlCurveLoading" class="flex items-center justify-center py-16">
+        <span class="loading loading-spinner loading-lg"></span>
+    </div>
+
+    <div id="pnlCurveError" class="hidden alert alert-error"></div>
+
+    <div id="pnlCurveContent" class="hidden space-y-4">
+        <!-- Compact stat row -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                <div class="text-xs text-base-content/60">Current</div>
+                <div id="pnlCurveCurrent" class="text-xl font-bold font-mono"></div>
+            </div>
+            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                <div class="text-xs text-base-content/60">Max</div>
+                <div id="pnlCurveMax" class="text-xl font-bold font-mono text-success"></div>
+                <div id="pnlCurveMaxTime" class="text-xs text-base-content/50"></div>
+            </div>
+            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                <div class="text-xs text-base-content/60">Min</div>
+                <div id="pnlCurveMin" class="text-xl font-bold font-mono text-error"></div>
+                <div id="pnlCurveMinTime" class="text-xs text-base-content/50"></div>
+            </div>
+            <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100">
+                <div class="text-xs text-base-content/60">Max Drawdown</div>
+                <div id="pnlCurveDrawdown" class="text-xl font-bold font-mono text-error"></div>
+            </div>
+        </div>
+
+        <!-- Chart card -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
+                    <div id="pnlCurveToggles" class="flex flex-wrap items-center gap-4 text-sm"></div>
+                    <button type="button" onclick="resetPnlCurveZoom()" class="btn btn-ghost btn-xs" title="Reset zoom">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 3h6m0 0v6m0-6L14 10M9 21H3m0 0v-6m0 6l7-7" />
+                        </svg>
+                        Reset Zoom
+                    </button>
+                </div>
+
+                <div id="pnlCurveChartWrap" class="w-full relative">
+                    <div id="pnlCurveChart" class="w-full" style="height: 480px;"></div>
+                    <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='js/vendor/lightweight-charts.standalone.production.js') }}"></script>
+<script>
+const PNL_ACCOUNT_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#14b8a6'];
+let pnlChartInstance = null;
+let pnlSeriesHandles = [];  // [{ key, series, name, color }]
+
+function formatRupee(value) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}₹${Number(value).toFixed(2)}`;
+}
+
+// Force IST regardless of browser/server timezone, matching OpenAlgo's own
+// PnL Tracker (frontend/src/pages/PnLTracker.tsx) - Lightweight Charts'
+// default tick formatting otherwise follows the browser's local timezone
+// (or UTC), not IST.
+function formatIstTime(unixSeconds) {
+    const date = new Date(unixSeconds * 1000);
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(date.getTime() + istOffsetMs);
+    const hours = istDate.getUTCHours().toString().padStart(2, '0');
+    const minutes = istDate.getUTCMinutes().toString().padStart(2, '0');
+    const seconds = istDate.getUTCSeconds().toString().padStart(2, '0');
+    return { hours, minutes, seconds };
+}
+
+function formatIstHHMM(unixSeconds) {
+    const t = formatIstTime(unixSeconds);
+    return `${t.hours}:${t.minutes}`;
+}
+
+async function loadPnlCurve() {
+    const loadingEl = document.getElementById('pnlCurveLoading');
+    const errorEl = document.getElementById('pnlCurveError');
+    const contentEl = document.getElementById('pnlCurveContent');
+    const refreshBtn = document.getElementById('pnlCurveRefreshBtn');
+    const refreshIcon = document.getElementById('pnlCurveRefreshIcon');
+    const refreshLabel = document.getElementById('pnlCurveRefreshLabel');
+
+    loadingEl.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+    contentEl.classList.add('hidden');
+    refreshBtn.disabled = true;
+    refreshIcon.classList.add('hidden');
+    refreshLabel.textContent = 'Loading...';
+
+    try {
+        const response = await fetch('{{ url_for("trading.pnl_combined") }}');
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'Failed to load P&L data');
+        }
+        contentEl.classList.remove('hidden');
+        renderPnlCurve(result.data);
+        const t = formatIstTime(Math.floor(Date.now() / 1000));
+        document.getElementById('pnlCurveUpdatedAt').textContent = `Updated ${t.hours}:${t.minutes}:${t.seconds} IST`;
+    } catch (e) {
+        errorEl.textContent = e.message || 'Failed to load P&L data';
+        errorEl.classList.remove('hidden');
+    } finally {
+        loadingEl.classList.add('hidden');
+        refreshBtn.disabled = false;
+        refreshIcon.classList.remove('hidden');
+        refreshLabel.textContent = 'Refresh';
+    }
+}
+
+function resetPnlCurveZoom() {
+    if (pnlChartInstance) {
+        pnlChartInstance.timeScale().fitContent();
+    }
+}
+
+function togglePnlSeries(key, visible) {
+    const handle = pnlSeriesHandles.find(h => h.key === key);
+    if (handle) {
+        handle.series.applyOptions({ visible });
+    }
+}
+
+function renderPnlCurve(data) {
+    const currentEl = document.getElementById('pnlCurveCurrent');
+    currentEl.textContent = formatRupee(data.current_mtm);
+    currentEl.classList.toggle('text-success', data.current_mtm >= 0);
+    currentEl.classList.toggle('text-error', data.current_mtm < 0);
+    document.getElementById('pnlCurveMax').textContent = formatRupee(data.max_mtm);
+    document.getElementById('pnlCurveMaxTime').textContent = data.max_mtm_time ? `at ${data.max_mtm_time} IST` : '';
+    document.getElementById('pnlCurveMin').textContent = formatRupee(data.min_mtm);
+    document.getElementById('pnlCurveMinTime').textContent = data.min_mtm_time ? `at ${data.min_mtm_time} IST` : '';
+    document.getElementById('pnlCurveDrawdown').textContent = formatRupee(data.max_drawdown);
+
+    const chartContainer = document.getElementById('pnlCurveChart');
+    const tooltipEl = document.getElementById('pnlCurveTooltip');
+    const togglesEl = document.getElementById('pnlCurveToggles');
+    chartContainer.innerHTML = '';
+    togglesEl.innerHTML = '';
+    tooltipEl.classList.add('hidden');
+    pnlSeriesHandles = [];
+
+    if (pnlChartInstance) {
+        pnlChartInstance.remove();
+        pnlChartInstance = null;
+    }
+
+    if (!data.pnl_series || data.pnl_series.length === 0) {
+        chartContainer.innerHTML = '<div class="flex items-center justify-center h-full text-base-content/50">No trades or open positions today</div>';
+        return;
+    }
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const chart = LightweightCharts.createChart(chartContainer, {
+        width: chartContainer.clientWidth,
+        height: 480,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#a6adbb' : '#4b5563',
+        },
+        grid: {
+            vertLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
+            horzLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
+        },
+        timeScale: {
+            timeVisible: true,
+            secondsVisible: false,
+            tickMarkFormatter: (time) => formatIstHHMM(time),
+        },
+        rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
+        crosshair: {
+            vertLine: { labelVisible: false },  // we show our own IST-correct tooltip instead
+        },
+    });
+
+    // Baseline series: green fill/line above zero, red below - profit/loss
+    // visible from the shape alone, not just the number (AlgoTest-style).
+    const baselineSeries = chart.addSeries(LightweightCharts.BaselineSeries, {
+        baseValue: { type: 'price', price: 0 },
+        topLineColor: '#22c55e',
+        topFillColor1: 'rgba(34, 197, 94, 0.28)',
+        topFillColor2: 'rgba(34, 197, 94, 0.05)',
+        bottomLineColor: '#ef4444',
+        bottomFillColor1: 'rgba(239, 68, 68, 0.05)',
+        bottomFillColor2: 'rgba(239, 68, 68, 0.28)',
+        lineWidth: 2,
+        priceScaleId: 'right',
+    });
+    baselineSeries.setData(data.pnl_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+    pnlSeriesHandles.push({ key: 'combined', series: baselineSeries, name: 'Combined', color: '#22c55e' });
+
+    const perAccount = data.per_account || [];
+    if (perAccount.length > 1) {
+        perAccount.forEach((a, i) => {
+            if (!a.series || a.series.length === 0) return;
+            const color = PNL_ACCOUNT_COLORS[i % PNL_ACCOUNT_COLORS.length];
+            const lineSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                color, lineWidth: 1, priceScaleId: 'right',
+                lastValueVisible: false, priceLineVisible: false,
+            });
+            lineSeries.setData(a.series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+            const key = `account_${a.account_id}`;
+            pnlSeriesHandles.push({ key, series: lineSeries, name: a.account_name, color });
+        });
+    }
+
+    if (data.drawdown_series && data.drawdown_series.length > 0) {
+        const drawdownSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: '#f000b8', lineWidth: 1, priceScaleId: 'right',
+            lastValueVisible: false, priceLineVisible: false,
+        });
+        drawdownSeries.setData(data.drawdown_series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+        pnlSeriesHandles.push({ key: 'drawdown', series: drawdownSeries, name: 'Drawdown', color: '#f000b8' });
+    }
+
+    // Show/hide checkboxes for every plotted series
+    togglesEl.innerHTML = pnlSeriesHandles.map(h => `
+        <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked class="checkbox checkbox-xs" style="accent-color:${h.color}"
+                   onchange="togglePnlSeries('${h.key}', this.checked)">
+            <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${h.color}"></span>
+            <span>${h.name}</span>
+        </label>
+    `).join('');
+
+    chart.timeScale().fitContent();
+    pnlChartInstance = chart;
+
+    chart.subscribeCrosshairMove(param => {
+        if (!param.point || !param.time) {
+            tooltipEl.classList.add('hidden');
+            return;
+        }
+        const combinedPoint = param.seriesData.get(baselineSeries);
+        if (!combinedPoint) {
+            tooltipEl.classList.add('hidden');
+            return;
+        }
+        const t = formatIstTime(param.time);
+        let html = `<div class="font-semibold">${t.hours}:${t.minutes}:${t.seconds} IST</div>`;
+        html += `<div class="${combinedPoint.value >= 0 ? 'text-success' : 'text-error'} font-medium">Combined: ${formatRupee(combinedPoint.value)}</div>`;
+        pnlSeriesHandles.forEach(h => {
+            if (h.key === 'combined') return;
+            const d = param.seriesData.get(h.series);
+            if (d) {
+                html += `<div style="color:${h.color}">${h.name}: ${formatRupee(d.value)}</div>`;
+            }
+        });
+        tooltipEl.innerHTML = html;
+        tooltipEl.classList.remove('hidden');
+
+        const wrapWidth = chartContainer.clientWidth;
+        let left = param.point.x + 16;
+        if (left + 170 > wrapWidth) left = Math.max(0, param.point.x - 170);
+        tooltipEl.style.left = left + 'px';
+        tooltipEl.style.top = '8px';
+    });
+}
+
+window.addEventListener('resize', () => {
+    const chartContainer = document.getElementById('pnlCurveChart');
+    if (pnlChartInstance && chartContainer && chartContainer.isConnected) {
+        pnlChartInstance.applyOptions({ width: chartContainer.clientWidth });
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    {% if accounts %}
+    loadPnlCurve();
+    {% endif %}
+});
+</script>
+{% endblock %}
