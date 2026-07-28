@@ -275,6 +275,12 @@ async function takePnlScreenshot() {
     const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
+    // html2canvas captures exactly target's own box, not the padding its
+    // ancestor (layout.html's <div class="p-6">) normally provides on the
+    // live page - add it back temporarily so the exported image has margin
+    // on all sides instead of text touching the edges, then remove it right
+    // after so the live page itself never shows the extra padding.
+    target.classList.add('p-6');
     try {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const canvas = await html2canvas(target, {
@@ -299,6 +305,7 @@ async function takePnlScreenshot() {
     } catch (e) {
         console.error('Screenshot failed:', e);
     } finally {
+        target.classList.remove('p-6');
         btn.disabled = false;
     }
 }
