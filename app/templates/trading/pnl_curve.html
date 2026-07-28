@@ -398,10 +398,16 @@ function drawPnlChart(series, drawdownSeries) {
     watermark.style.pointerEvents = 'none';
     watermark.style.userSelect = 'none';
     watermark.style.zIndex = '1';
-    const watermarkColor = isDark ? 'rgba(166, 173, 187, 0.2)' : 'rgba(0, 0, 0, 0.15)';
+    // text-base-content at low opacity instead of hardcoded rgba: that token
+    // is already calibrated by DaisyUI for correct contrast against each
+    // theme's own background, so one class reads right in both themes -
+    // hand-picked rgba(166,173,187,0.2) (copied from OpenAlgo's exact
+    // values) turned out too low-contrast against AlgoMirror's specific
+    // dark background shade, even though it read fine in light mode.
+    watermark.className = 'text-base-content/15';
     watermark.innerHTML = `
-        <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px; color: ${watermarkColor};">AlgoMirror</div>
-        <div style="font-family: Arial, sans-serif; font-size: 16px; color: ${watermarkColor};">Powered by OpenAlgo</div>
+        <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px;">AlgoMirror</div>
+        <div style="font-family: Arial, sans-serif; font-size: 16px;">Powered by OpenAlgo</div>
     `;
     chartContainer.appendChild(watermark);
 
