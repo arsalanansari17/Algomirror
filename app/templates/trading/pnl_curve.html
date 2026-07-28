@@ -59,40 +59,34 @@
     <div id="pnlCurveContent" class="hidden">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
-                <!-- Stat row: plain (no boxes), branding + stats side by
-                     side above the chart - the vertical sidebar version of
-                     this ended up with huge dead gaps once the chart got
-                     tall enough to stretch it, so back to a horizontal row. -->
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                    <div class="text-center sm:text-left">
-                        <div class="font-bold text-base-content">AlgoMirror</div>
-                        <div class="text-xs text-base-content/50">Powered by OpenAlgo</div>
+                <!-- Stat row: plain (no boxes) above the chart. Branding
+                     moved into the chart itself as a centered watermark
+                     (see drawPnlChart) - same technique OpenAlgo's own PnL
+                     Tracker uses for its "OpenAlgo" watermark. -->
+                <div class="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-x-6 gap-y-3 mb-4">
+                    <div>
+                        <div class="text-xs text-base-content/60">Current</div>
+                        <div id="pnlCurveCurrent" class="text-4xl font-bold font-mono"></div>
                     </div>
-                    <div class="grid grid-cols-2 sm:flex sm:items-center gap-x-6 gap-y-3">
-                        <div>
-                            <div class="text-xs text-base-content/60">Current</div>
-                            <div id="pnlCurveCurrent" class="text-4xl font-bold font-mono"></div>
+                    <div>
+                        <div class="text-xs text-base-content/60">Max</div>
+                        <div class="flex items-center gap-1.5">
+                            <span id="pnlCurveMax" class="text-2xl font-bold font-mono" style="color:#22c55e"></span>
+                            <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
                         </div>
-                        <div>
-                            <div class="text-xs text-base-content/60">Max</div>
-                            <div class="flex items-center gap-1.5">
-                                <span id="pnlCurveMax" class="text-2xl font-bold font-mono" style="color:#22c55e"></span>
-                                <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
-                            </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-base-content/60">Min</div>
+                        <div class="flex items-center gap-1.5">
+                            <span id="pnlCurveMin" class="text-2xl font-bold font-mono" style="color:#ef4444"></span>
+                            <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
                         </div>
-                        <div>
-                            <div class="text-xs text-base-content/60">Min</div>
-                            <div class="flex items-center gap-1.5">
-                                <span id="pnlCurveMin" class="text-2xl font-bold font-mono" style="color:#ef4444"></span>
-                                <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="text-xs text-base-content/60">Max Drawdown</div>
-                            <div class="flex items-center gap-1.5">
-                                <span id="pnlCurveDrawdown" class="text-2xl font-bold font-mono" style="color:#ef4444"></span>
-                                <span id="pnlCurveDrawdownTime" class="text-xs text-base-content/50"></span>
-                            </div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-base-content/60">Max Drawdown</div>
+                        <div class="flex items-center gap-1.5">
+                            <span id="pnlCurveDrawdown" class="text-2xl font-bold font-mono" style="color:#ef4444"></span>
+                            <span id="pnlCurveDrawdownTime" class="text-xs text-base-content/50"></span>
                         </div>
                     </div>
                 </div>
@@ -374,6 +368,28 @@ function drawPnlChart(series, drawdownSeries) {
             vertLine: { labelVisible: false },  // we show our own IST-correct tooltip instead
         },
     });
+
+    // Centered, greyed-out branding watermark - same technique OpenAlgo's own
+    // PnL Tracker uses for its "OpenAlgo" watermark (frontend/src/pages/
+    // PnLTracker.tsx), except centered via CSS transform instead of a
+    // manual offsetWidth calc + resize listener, since that self-adjusts
+    // without extra JS. Cleared along with everything else in
+    // chartContainer.innerHTML = '' at the top of this function on redraw.
+    const watermark = document.createElement('div');
+    watermark.style.position = 'absolute';
+    watermark.style.top = '50%';
+    watermark.style.left = '50%';
+    watermark.style.transform = 'translate(-50%, -50%)';
+    watermark.style.textAlign = 'center';
+    watermark.style.pointerEvents = 'none';
+    watermark.style.userSelect = 'none';
+    watermark.style.zIndex = '1';
+    const watermarkColor = isDark ? 'rgba(166, 173, 187, 0.2)' : 'rgba(0, 0, 0, 0.15)';
+    watermark.innerHTML = `
+        <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px; color: ${watermarkColor};">AlgoMirror</div>
+        <div style="font-family: Arial, sans-serif; font-size: 16px; color: ${watermarkColor};">Powered by OpenAlgo</div>
+    `;
+    chartContainer.appendChild(watermark);
 
     // Baseline series: green fill/line above zero, red below - profit/loss
     // visible from the shape alone, not just the number (AlgoTest-style).
