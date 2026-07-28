@@ -3,7 +3,7 @@
 {% block title %}Intraday P&L - AlgoMirror{% endblock %}
 
 {% block content %}
-<div class="space-y-4">
+<div id="pnlCurvePageWrap" class="space-y-4">
     <!-- Header -->
     <div class="flex justify-between items-center flex-wrap gap-3">
         <div>
@@ -247,9 +247,17 @@ document.addEventListener('keydown', (e) => {
 // "-pro" html2canvas fork because DaisyUI's theme colors are oklch(), which
 // the classic html2canvas can't parse.
 async function takePnlScreenshot() {
-    const target = document.getElementById('pnlCurveContent');
+    // Capture the whole page wrap (title + subtitle + "Updated" timestamp +
+    // stats + chart), not just the stats/chart card - a screenshot with no
+    // heading or timestamp isn't self-explanatory once shared on its own.
+    // The account dropdown and the two action buttons are excluded via
+    // ignoreElements since they're interactive controls, not part of the
+    // report.
+    const target = document.getElementById('pnlCurvePageWrap');
     const btn = document.getElementById('pnlCurveScreenshotBtn');
     if (!target || !btn) return;
+
+    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
     try {
@@ -259,6 +267,7 @@ async function takePnlScreenshot() {
             scale: 2,
             logging: false,
             useCORS: true,
+            ignoreElements: (el) => excludedIds.includes(el.id),
         });
         canvas.toBlob((blob) => {
             if (!blob) return;
