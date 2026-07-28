@@ -197,6 +197,7 @@ async function loadPnlCurve() {
     const refreshBtn = document.getElementById('pnlCurveRefreshBtn');
     const refreshIcon = document.getElementById('pnlCurveRefreshIcon');
     const refreshLabel = document.getElementById('pnlCurveRefreshLabel');
+    const screenshotBtn = document.getElementById('pnlCurveScreenshotBtn');
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
@@ -204,6 +205,11 @@ async function loadPnlCurve() {
     refreshBtn.disabled = true;
     refreshIcon.classList.add('hidden');
     refreshLabel.textContent = 'Loading...';
+    // Also block Screenshot while loading - html2canvas can't render the
+    // CSS-mask-based spinner (shows as a solid box, not a ring) and the
+    // stats/chart are hidden at this point anyway, so a screenshot taken
+    // mid-load just captures an empty-looking page.
+    screenshotBtn.disabled = true;
 
     try {
         const response = await fetch('{{ url_for("trading.pnl_combined") }}');
@@ -224,6 +230,7 @@ async function loadPnlCurve() {
         refreshBtn.disabled = false;
         refreshIcon.classList.remove('hidden');
         refreshLabel.textContent = 'Refresh';
+        screenshotBtn.disabled = false;
     }
 }
 
@@ -256,6 +263,14 @@ async function takePnlScreenshot() {
     const target = document.getElementById('pnlCurvePageWrap');
     const btn = document.getElementById('pnlCurveScreenshotBtn');
     if (!target || !btn) return;
+
+    // Safety net beyond the disabled-while-loading state above, in case this
+    // ever gets called while the content is still hidden (e.g. a future
+    // caller that isn't the button click).
+    const contentEl = document.getElementById('pnlCurveContent');
+    if (!contentEl || contentEl.classList.contains('hidden')) {
+        return;
+    }
 
     const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveRefreshBtn'];
 
