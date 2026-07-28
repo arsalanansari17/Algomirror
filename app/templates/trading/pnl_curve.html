@@ -59,16 +59,16 @@
     <div id="pnlCurveContent" class="hidden">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
-                <div class="flex flex-col lg:flex-row gap-4">
-                    <!-- Stat panes: a row on mobile, a plain (no box) column
-                         to the left of the chart from lg: up, spread across
-                         the chart's full height via justify-between so
-                         nothing dead-ends with empty space below it. -->
-                    <div class="grid grid-cols-2 gap-6 lg:flex lg:flex-col lg:justify-between lg:w-1/4 lg:shrink-0">
-                        <div class="col-span-2 text-center">
-                            <div class="font-bold text-base-content">AlgoMirror</div>
-                            <div class="text-xs text-base-content/50">Powered by OpenAlgo</div>
-                        </div>
+                <!-- Stat row: plain (no boxes), branding + stats side by
+                     side above the chart - the vertical sidebar version of
+                     this ended up with huge dead gaps once the chart got
+                     tall enough to stretch it, so back to a horizontal row. -->
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                    <div class="text-center sm:text-left">
+                        <div class="font-bold text-base-content">AlgoMirror</div>
+                        <div class="text-xs text-base-content/50">Powered by OpenAlgo</div>
+                    </div>
+                    <div class="grid grid-cols-2 sm:flex sm:items-center gap-x-6 gap-y-3">
                         <div>
                             <div class="text-xs text-base-content/60">Current</div>
                             <div id="pnlCurveCurrent" class="text-4xl font-bold font-mono"></div>
@@ -95,17 +95,12 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Chart column: legend lives here now, directly above
-                         the chart it describes, instead of floating above
-                         the stats column too. -->
-                    <div class="flex-1 min-w-0">
-                        <div id="pnlCurveLegend" class="flex items-center justify-end gap-4 text-sm text-base-content/60 mb-2"></div>
-                        <div id="pnlCurveChartWrap" class="w-full relative">
-                            <div id="pnlCurveChart" class="w-full" style="height: calc(100vh - 280px); min-height: 420px;"></div>
-                            <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
-                        </div>
-                    </div>
+                <div id="pnlCurveLegend" class="flex items-center justify-end gap-4 text-sm text-base-content/60 mb-2"></div>
+                <div id="pnlCurveChartWrap" class="w-full relative">
+                    <div id="pnlCurveChart" class="w-full" style="height: calc(100vh - 380px); min-height: 420px;"></div>
+                    <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
                 </div>
             </div>
         </div>
@@ -362,8 +357,12 @@ function drawPnlChart(series, drawdownSeries) {
             attributionLogo: false,
         },
         grid: {
-            vertLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
-            horzLines: { color: isDark ? '#2a2e37' : '#e5e7eb' },
+            // Semi-transparent rather than an opaque hex, matching OpenAlgo's
+            // own PnL Tracker (frontend/src/pages/PnLTracker.tsx) - blends
+            // with whatever the card background actually is instead of
+            // needing an exact-matching gray picked per theme.
+            vertLines: { color: isDark ? 'rgba(166, 173, 187, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
+            horzLines: { color: isDark ? 'rgba(166, 173, 187, 0.1)' : 'rgba(0, 0, 0, 0.1)' },
         },
         timeScale: {
             timeVisible: true,
