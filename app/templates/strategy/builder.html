@@ -3256,6 +3256,7 @@ async function fetchCombinedPremium() {
 
             // Update connection status
             if (connectionEl) {
+                connectionEl.title = '';
                 if (allPositionsClosed) {
                     connectionEl.innerHTML = 'Closed';
                     connectionEl.className = 'badge badge-sm badge-warning';
@@ -3293,15 +3294,17 @@ async function fetchCombinedPremium() {
                 }
             }
         } else {
-            throw new Error('No data received');
+            throw new Error(result.message || 'No data received');
         }
     } catch (error) {
-        console.error('Error fetching combined premium:', error);
+        console.error('[Supertrend] Combined premium fetch failed:', error.message);
 
-        // Update connection status to offline
+        // Update connection status to offline - surface the actual reason via
+        // tooltip since the badge itself has no room for the message
         if (connectionEl) {
             connectionEl.innerHTML = 'Offline';
             connectionEl.className = 'badge badge-sm badge-error';
+            connectionEl.title = error.message || 'Unknown error';
         }
     }
 }
