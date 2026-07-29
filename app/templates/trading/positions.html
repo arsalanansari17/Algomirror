@@ -102,7 +102,7 @@
 
         <div class="stat">
             <div class="stat-title">Total P&L</div>
-            <div class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+            <div id="statTotalPnl" class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(total_pnl) }}
             </div>
         </div>
@@ -429,6 +429,7 @@ function applyPositionsFilters() {
 
     const rows = Array.from(document.querySelectorAll('#positionsTbody tr:not(.group-header-row)'));
     let visible = 0;
+    let visiblePnl = 0;
     rows.forEach(row => {
         let show = true;
         if (query && !row.dataset.symbol.includes(query)) show = false;
@@ -436,8 +437,21 @@ function applyPositionsFilters() {
         if (positionsFilters.direction.length && !positionsFilters.direction.includes(row.dataset.direction)) show = false;
         if (positionsFilters.exchange.length && !positionsFilters.exchange.includes(row.dataset.exchange)) show = false;
         row.dataset.filteredVisible = show ? '1' : '0';
-        if (show) visible++;
+        if (show) {
+            visible++;
+            visiblePnl += parseFloat(row.dataset.pnl) || 0;
+        }
     });
+
+    // Total P&L stat matches whatever's currently filtered in, same as the
+    // per-group totals in regroupPositions() below - the server-rendered
+    // total_pnl (all positions, unfiltered) is only ever the initial value.
+    const totalPnlEl = document.getElementById('statTotalPnl');
+    if (totalPnlEl) {
+        totalPnlEl.textContent = `₹${visiblePnl.toFixed(2)}`;
+        totalPnlEl.classList.toggle('text-success', visiblePnl >= 0);
+        totalPnlEl.classList.toggle('text-error', visiblePnl < 0);
+    }
 
     const total = rows.length;
     const hasActive = query !== '' || positionsFilters.product.length || positionsFilters.direction.length ||
