@@ -29,6 +29,12 @@
                 </svg>
                 Screenshot
             </button>
+            <button type="button" id="pnlCurveShareBtn" onclick="openPnlShareModal()" class="btn btn-outline btn-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 8.632a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                </svg>
+                Share
+            </button>
             <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="btn btn-primary btn-sm">
                 <svg id="pnlCurveRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -116,6 +122,36 @@
     {% endif %}
 </div>
 
+<!-- Share to X (Twitter) Dialog - posts via the browser's own logged-in
+     session (twitter.com/intent/tweet), not the OAuth API, so no app
+     registration or stored credentials are needed. Image can't be attached
+     via the intent URL, so it's copied to the clipboard for the user to
+     paste (Ctrl+V) into the compose box that opens. -->
+<dialog id="pnlShareModal" class="modal">
+    <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg mb-1">Share to X (Twitter)</h3>
+        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then copy the chart image and post.</p>
+
+        <textarea id="pnlShareText" class="textarea textarea-bordered w-full h-40 font-mono text-sm" oninput="updatePnlShareCharCount()"></textarea>
+        <div class="flex justify-end mt-1">
+            <span id="pnlShareCharCount" class="text-xs text-base-content/50"></span>
+        </div>
+
+        <div class="alert alert-info text-xs mt-3 py-2">
+            Copies the chart image to your clipboard and opens X's compose window in a
+            new tab - paste the image there (Ctrl+V) before posting.
+        </div>
+
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="pnlShareModal.close()">Cancel</button>
+            <button type="button" id="pnlShareConfirmBtn" class="btn btn-primary btn-sm" onclick="confirmPnlShare()">Copy Image &amp; Open X</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
 <script src="{{ url_for('static', filename='js/vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/vendor/html2canvas-pro.min.js') }}"></script>
 <script>
@@ -198,6 +234,7 @@ async function loadPnlCurve() {
     const refreshIcon = document.getElementById('pnlCurveRefreshIcon');
     const refreshLabel = document.getElementById('pnlCurveRefreshLabel');
     const screenshotBtn = document.getElementById('pnlCurveScreenshotBtn');
+    const shareBtn = document.getElementById('pnlCurveShareBtn');
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
@@ -205,11 +242,12 @@ async function loadPnlCurve() {
     refreshBtn.disabled = true;
     refreshIcon.classList.add('hidden');
     refreshLabel.textContent = 'Loading...';
-    // Also block Screenshot while loading - html2canvas can't render the
+    // Also block Screenshot/Share while loading - html2canvas can't render the
     // CSS-mask-based spinner (shows as a solid box, not a ring) and the
-    // stats/chart are hidden at this point anyway, so a screenshot taken
+    // stats/chart are hidden at this point anyway, so a capture taken
     // mid-load just captures an empty-looking page.
     screenshotBtn.disabled = true;
+    shareBtn.disabled = true;
 
     try {
         const response = await fetch('{{ url_for("trading.pnl_combined") }}');
@@ -231,6 +269,7 @@ async function loadPnlCurve() {
         refreshIcon.classList.remove('hidden');
         refreshLabel.textContent = 'Refresh';
         screenshotBtn.disabled = false;
+        shareBtn.disabled = false;
     }
 }
 
@@ -272,7 +311,7 @@ async function takePnlScreenshot() {
         return;
     }
 
-    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveRefreshBtn'];
+    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
     // html2canvas captures exactly target's own box, not the padding its
@@ -308,6 +347,95 @@ async function takePnlScreenshot() {
         target.classList.remove('p-6');
         btn.disabled = false;
     }
+}
+
+// Twitter/X's standard free-tier compose limit. We have a paid account with
+// no limit, but this feature is meant to be upstreamed to other AlgoMirror
+// users who may not, so the counter warns before they hit a silent
+// truncation/rejection at post time.
+const PNL_SHARE_CHAR_LIMIT = 280;
+
+function openPnlShareModal() {
+    const contentEl = document.getElementById('pnlCurveContent');
+    if (!contentEl || contentEl.classList.contains('hidden')) return;
+    const textarea = document.getElementById('pnlShareText');
+    textarea.value = buildDefaultPnlShareCaption();
+    updatePnlShareCharCount();
+    document.getElementById('pnlShareModal').showModal();
+}
+
+function updatePnlShareCharCount() {
+    const len = document.getElementById('pnlShareText').value.length;
+    const countEl = document.getElementById('pnlShareCharCount');
+    countEl.textContent = `${len} / ${PNL_SHARE_CHAR_LIMIT}`;
+    countEl.classList.toggle('text-error', len > PNL_SHARE_CHAR_LIMIT);
+    countEl.classList.toggle('text-base-content/50', len <= PNL_SHARE_CHAR_LIMIT);
+}
+
+// Simple fixed template - no per-index/stock hashtag detection (deliberately
+// out of scope for now). Reads the already-rendered "Current MTM" stat
+// directly so the caption always matches whatever's on screen, including
+// the currently-selected account.
+function buildDefaultPnlShareCaption() {
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(Date.now() + istOffsetMs);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateStr = `${istDate.getUTCDate()} ${months[istDate.getUTCMonth()]} ${istDate.getUTCFullYear()}`;
+
+    const currentText = (document.getElementById('pnlCurveCurrent').textContent || '').trim();
+    const resultLine = currentText.startsWith('-')
+        ? `🔴 Loss booked: ${currentText}`
+        : `✅ Profit booked: ${currentText}`;
+
+    return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
+}
+
+async function confirmPnlShare() {
+    const btn = document.getElementById('pnlShareConfirmBtn');
+    const textarea = document.getElementById('pnlShareText');
+    const target = document.getElementById('pnlCurvePageWrap');
+    if (!target) return;
+
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Copying...';
+
+    // Same capture target/settings as takePnlScreenshot(), but written to the
+    // clipboard instead of downloaded - the tweet intent URL has no way to
+    // attach an image, so the user pastes it into the compose box instead.
+    target.classList.add('p-6');
+    try {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const canvas = await html2canvas(target, {
+            backgroundColor: isDark ? '#1f2937' : '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            ignoreElements: (el) => ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
+        });
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
+        if (blob && navigator.clipboard && window.ClipboardItem) {
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                showToast('Chart image copied - paste it into the X compose window (Ctrl+V).', 'success');
+            } catch (clipErr) {
+                console.error('Clipboard write failed:', clipErr);
+                showToast('Could not copy the image automatically - use the Screenshot button and attach it manually.', 'warning');
+            }
+        } else {
+            showToast('Clipboard image copy is not supported in this browser - use the Screenshot button and attach it manually.', 'warning');
+        }
+    } catch (e) {
+        console.error('Share capture failed:', e);
+        showToast('Failed to capture the chart image.', 'error');
+    } finally {
+        target.classList.remove('p-6');
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+    }
+
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(textarea.value)}`, '_blank', 'noopener');
+    document.getElementById('pnlShareModal').close();
 }
 
 // Running peak-vs-current drawdown, same formula the backend uses for the
