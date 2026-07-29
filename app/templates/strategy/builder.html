@@ -505,6 +505,11 @@
                             <div class="stat-value text-2xl" id="open-option-qty-value">--</div>
                             <div class="stat-desc">CE/PE itemized by Buy/Sell (open only)</div>
                         </div>
+                        <div class="stat" id="open-combined-premium-stat" style="display: none;">
+                            <div class="stat-title">Combined Premium</div>
+                            <div class="stat-value text-2xl" id="open-combined-premium-value">--</div>
+                            <div class="stat-desc">Captured at entry (rupee terms)</div>
+                        </div>
                         {% endif %}
                     </div>
                 </div>
@@ -3591,6 +3596,25 @@ async function loadPositions(strategyId) {
                     document.getElementById('open-option-qty-value').innerHTML = items.join('');
                 } else {
                     optionQtyStat.style.display = 'none';
+                }
+            }
+
+            // Update Combined Premium in rupee terms - captured at entry (initial state only,
+            // does not fluctuate with LTP). Always shown, independent of Supertrend risk management.
+            const combinedPremiumStat = document.getElementById('open-combined-premium-stat');
+            if (combinedPremiumStat) {
+                const npInit = data.open_net_premium;
+                if (npInit && npInit.has_open) {
+                    combinedPremiumStat.style.display = '';
+                    const valueEl = document.getElementById('open-combined-premium-value');
+                    if (valueEl) {
+                        // Flip sign to match Combined Premium convention (SELL adds, BUY subtracts)
+                        const combinedPremiumInitial = -parseFloat(npInit.value || 0);
+                        valueEl.textContent = `₹${Math.round(combinedPremiumInitial).toLocaleString('en-IN')}`;
+                        valueEl.className = `stat-value text-2xl ${combinedPremiumInitial >= 0 ? 'text-success' : 'text-warning'}`;
+                    }
+                } else {
+                    combinedPremiumStat.style.display = 'none';
                 }
             }
 
