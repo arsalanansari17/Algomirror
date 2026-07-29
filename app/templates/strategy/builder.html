@@ -766,7 +766,10 @@
                                 </span>
                             </div>
                             <div class="text-center my-2">
-                                <span class="font-mono font-bold text-2xl" id="riskCombinedPremium">--</span>
+                                <span class="font-mono font-bold text-2xl" id="riskCombinedPremiumRs">--</span>
+                                <div class="text-xs text-base-content/60 mt-1">
+                                    Pts: <span class="font-mono" id="riskCombinedPremium">--</span>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2 text-xs">
                                 <div>
@@ -3068,7 +3071,10 @@ function updateRiskStatusHTML(strategyData) {
                     </span>
                 </div>
                 <div class="text-center my-2">
-                    <span class="font-mono font-bold text-2xl" id="riskCombinedPremium">--</span>
+                    <span class="font-mono font-bold text-2xl" id="riskCombinedPremiumRs">--</span>
+                    <div class="text-xs text-base-content/60 mt-1">
+                        Pts: <span class="font-mono" id="riskCombinedPremium">--</span>
+                    </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -3439,6 +3445,11 @@ async function loadPositions(strategyId) {
             // Itemized CE/PE quantity totals for OPEN positions, split by Buy/Sell
             const openOptionQty = { CE: { BUY: 0, SELL: 0 }, PE: { BUY: 0, SELL: 0 } };
 
+            // Combined Premium in rupee terms (live, LTP-based): SELL adds, BUY subtracts,
+            // matching the sign convention used by the points-based Combined Premium (Supertrend) card
+            let combinedPremiumRs = 0;
+            let hasOpenPositionForPremium = false;
+
             if (positions.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="11" class="text-center text-base-content/60">No positions</td></tr>';
 
@@ -3454,6 +3465,7 @@ async function loadPositions(strategyId) {
                     const pnl = parseFloat(position.pnl) || 0;
                     const row = tbody.insertRow();
                     const qty = parseInt(position.quantity) || 0;
+                    const ltp = parseFloat(position.ltp) || 0;
                     const isOpenPosition = qty !== 0 && position.is_closed !== true;
 
                     console.log(`Position ${position.symbol}: qty=${qty}, is_closed=${position.is_closed}, status=${position.status}, isOpen=${isOpenPosition}`);
@@ -3525,6 +3537,12 @@ async function loadPositions(strategyId) {
                         openOptionQty[instrumentType][action] += Math.abs(qty);
                     }
 
+                    // Accumulate live Combined Premium in rupee terms (SELL adds, BUY subtracts)
+                    if (isOpenPosition) {
+                        hasOpenPositionForPremium = true;
+                        combinedPremiumRs += ltp * Math.abs(qty) * (action === 'SELL' ? 1 : -1);
+                    }
+
                     row.innerHTML = `
                         <td><span class="badge badge-outline badge-sm">${position.account_name || 'N/A'}</span></td>
                         <td><span class="badge badge-primary badge-sm">${position.leg_number || '-'}</span></td>
@@ -3592,6 +3610,14 @@ async function loadPositions(strategyId) {
                 } else {
                     optionQtyStat.style.display = 'none';
                 }
+            }
+
+            // Update live Combined Premium in rupee terms (Risk Status card)
+            const combinedPremiumRsEl = document.getElementById('riskCombinedPremiumRs');
+            if (combinedPremiumRsEl) {
+                combinedPremiumRsEl.textContent = hasOpenPositionForPremium
+                    ? `₹${Math.round(combinedPremiumRs).toLocaleString('en-IN')}`
+                    : '--';
             }
 
             // Update Total P&L display - update ALL P&L elements
