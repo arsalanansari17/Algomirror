@@ -122,29 +122,33 @@
     {% endif %}
 </div>
 
-<!-- Share to X (Twitter) Dialog - posts via the browser's own logged-in
-     session (twitter.com/intent/tweet), not the OAuth API, so no app
-     registration or stored credentials are needed. The intent URL can't
-     attach an image itself (no media param), so it's written to the
-     clipboard instead - the user still has to paste it (Ctrl+V) into the X
-     compose window that opens, which is a hard platform limitation, not a
-     bug: intent links don't support image attachment at all, and a page
-     can't script a paste into another origin's textarea. -->
+<!-- Share Dialog - posts via each platform's own web share/intent link, using
+     whatever account is already logged into the browser, so no OAuth app
+     registration or stored credentials are needed for any of them. None of
+     these links can attach an image itself (no media param on any of the
+     three), so it's written to the clipboard instead - the user still has
+     to paste it (Ctrl+V) into whichever compose window opens, which is a
+     hard platform limitation, not a bug: intent links don't support image
+     attachment at all, and a page can't script a paste into another
+     origin's textarea. -->
 <dialog id="pnlShareModal" class="modal">
     <div class="modal-box max-w-lg">
-        <h3 class="font-bold text-lg mb-1">Share to X (Twitter)</h3>
-        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then post to X.</p>
+        <h3 class="font-bold text-lg mb-1">Share P&amp;L</h3>
+        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then share.</p>
 
         <textarea id="pnlShareText" class="textarea textarea-bordered w-full h-40 font-mono text-sm" oninput="updatePnlShareCharCount()"></textarea>
         <div class="flex justify-end mt-1">
             <span id="pnlShareCharCount" class="text-xs text-base-content/50"></span>
         </div>
+        <p class="text-xs text-base-content/40 -mt-0.5">280 is X's own limit - WhatsApp and Telegram allow much more.</p>
 
         <p id="pnlShareImageHint" class="text-xs text-base-content/50 mt-2">Preparing chart image...</p>
 
-        <div class="modal-action">
+        <div class="modal-action flex-wrap">
             <button type="button" class="btn btn-ghost btn-sm" onclick="pnlShareModal.close()">Cancel</button>
-            <button type="button" id="pnlShareConfirmBtn" class="btn btn-primary btn-sm" onclick="openPnlShareTwitter()">Open X Compose</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openPnlShareIntent('telegram')">Telegram</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openPnlShareIntent('whatsapp')">WhatsApp</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openPnlShareIntent('x')">X (Twitter)</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">
@@ -394,12 +398,12 @@ function buildDefaultPnlShareCaption() {
 }
 
 // Captures the chart+stats and writes it straight to the clipboard - no
-// preview shown, since the intent link can't attach it either way and a
-// thumbnail was just extra clutter once the clipboard write itself was
-// confirmed working. The one remaining manual step (Ctrl+V into the X
-// compose window) is a hard platform limitation, not something this can
-// remove: intent links have no media param, and a page can't script a paste
-// into another origin's textarea.
+// preview shown, since none of the share links can attach it either way and
+// a thumbnail was just extra clutter once the clipboard write itself was
+// confirmed working. The one remaining manual step (Ctrl+V into whichever
+// compose window opens) is a hard platform limitation, not something this
+// can remove: intent links have no media param, and a page can't script a
+// paste into another origin's textarea.
 async function preparePnlShareImage() {
     const target = document.getElementById('pnlCurvePageWrap');
     const hintEl = document.getElementById('pnlShareImageHint');
@@ -431,7 +435,7 @@ async function preparePnlShareImage() {
     if (navigator.clipboard && window.ClipboardItem) {
         try {
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            hintEl.textContent = 'Image copied to your clipboard - paste it (Ctrl+V) into the X compose window.';
+            hintEl.textContent = 'Image copied to your clipboard - paste it (Ctrl+V) into whichever compose window opens.';
             return;
         } catch (clipErr) {
             console.error('Clipboard write failed:', clipErr);
@@ -440,9 +444,24 @@ async function preparePnlShareImage() {
     hintEl.textContent = 'Could not copy the image automatically - use the Screenshot button and attach it manually.';
 }
 
-function openPnlShareTwitter() {
+// Each platform's own web share/intent link - no OAuth app or stored
+// credentials for any of them, just a prefilled-text compose window against
+// whatever account is already logged into the browser.
+const PNL_SHARE_INTENT_URLS = {
+    x: (text) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
+    whatsapp: (text) => `https://wa.me/?text=${encodeURIComponent(text)}`,
+    // Telegram's share widget expects a `url` param (it's built for sharing
+    // links); leaving it empty still opens the chat picker with `text` as
+    // the message body, just without a link preview - fine here since
+    // there's no public URL for this private, login-gated page to share.
+    telegram: (text) => `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`,
+};
+
+function openPnlShareIntent(platform) {
     const textarea = document.getElementById('pnlShareText');
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(textarea.value)}`, '_blank', 'noopener');
+    const buildUrl = PNL_SHARE_INTENT_URLS[platform];
+    if (!buildUrl) return;
+    window.open(buildUrl(textarea.value), '_blank', 'noopener');
     document.getElementById('pnlShareModal').close();
 }
 
