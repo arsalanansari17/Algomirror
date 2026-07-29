@@ -125,30 +125,22 @@
 <!-- Share to X (Twitter) Dialog - posts via the browser's own logged-in
      session (twitter.com/intent/tweet), not the OAuth API, so no app
      registration or stored credentials are needed. The intent URL can't
-     attach an image, and automatically writing one to the clipboard
-     (navigator.clipboard.write) is unreliable across browsers - some
-     Chromium forks (e.g. Perplexity Comet) silently no-op it regardless of
-     timing. So the capture is always shown inline as a plain <img>: the user
-     can right-click it and pick "Copy image" themselves, a native action
-     with no clipboard-permission dependency. The automatic write is still
-     attempted in the background as a bonus for browsers where it works. -->
+     attach an image itself (no media param), so it's written to the
+     clipboard instead - the user still has to paste it (Ctrl+V) into the X
+     compose window that opens, which is a hard platform limitation, not a
+     bug: intent links don't support image attachment at all, and a page
+     can't script a paste into another origin's textarea. -->
 <dialog id="pnlShareModal" class="modal">
     <div class="modal-box max-w-lg">
         <h3 class="font-bold text-lg mb-1">Share to X (Twitter)</h3>
-        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then copy the chart image below and post.</p>
+        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then post to X.</p>
 
-        <textarea id="pnlShareText" class="textarea textarea-bordered w-full h-28 font-mono text-sm" oninput="updatePnlShareCharCount()"></textarea>
+        <textarea id="pnlShareText" class="textarea textarea-bordered w-full h-40 font-mono text-sm" oninput="updatePnlShareCharCount()"></textarea>
         <div class="flex justify-end mt-1">
             <span id="pnlShareCharCount" class="text-xs text-base-content/50"></span>
         </div>
 
-        <div class="mt-3">
-            <div id="pnlShareImageWrap" class="border border-base-300 rounded-lg overflow-hidden bg-base-200 flex items-center justify-center" style="min-height: 140px;">
-                <span id="pnlShareImageStatus" class="text-sm text-base-content/50 py-8">Preparing image...</span>
-                <img id="pnlShareImage" class="hidden w-full h-auto" alt="P&amp;L chart preview">
-            </div>
-            <p id="pnlShareImageHint" class="text-xs text-base-content/50 mt-1">Right-click the image above and choose "Copy image", then paste it (Ctrl+V) into the X compose window.</p>
-        </div>
+        <p id="pnlShareImageHint" class="text-xs text-base-content/50 mt-2">Preparing chart image...</p>
 
         <div class="modal-action">
             <button type="button" class="btn btn-ghost btn-sm" onclick="pnlShareModal.close()">Cancel</button>
@@ -369,15 +361,7 @@ function openPnlShareModal() {
     const textarea = document.getElementById('pnlShareText');
     textarea.value = buildDefaultPnlShareCaption();
     updatePnlShareCharCount();
-
-    const img = document.getElementById('pnlShareImage');
-    const status = document.getElementById('pnlShareImageStatus');
-    img.classList.add('hidden');
-    img.removeAttribute('src');
-    status.textContent = 'Preparing image...';
-    status.classList.remove('hidden');
-    document.getElementById('pnlShareImageHint').textContent =
-        'Right-click the image above and choose "Copy image", then paste it (Ctrl+V) into the X compose window.';
+    document.getElementById('pnlShareImageHint').textContent = 'Preparing chart image...';
 
     document.getElementById('pnlShareModal').showModal();
     preparePnlShareImage();
@@ -409,16 +393,16 @@ function buildDefaultPnlShareCaption() {
     return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
 }
 
-// Captures once and always shows it inline so the user has a guaranteed,
-// permission-free way to grab it (right-click -> "Copy image"). An automatic
-// clipboard.write() is also attempted with the same blob as a bonus - it
-// works in stock Chrome/Edge, but some Chromium forks (Perplexity Comet
-// confirmed) silently no-op it regardless of call timing, so it's treated as
-// a nice-to-have, not the primary path.
+// Captures the chart+stats and writes it straight to the clipboard - no
+// preview shown, since the intent link can't attach it either way and a
+// thumbnail was just extra clutter once the clipboard write itself was
+// confirmed working. The one remaining manual step (Ctrl+V into the X
+// compose window) is a hard platform limitation, not something this can
+// remove: intent links have no media param, and a page can't script a paste
+// into another origin's textarea.
 async function preparePnlShareImage() {
     const target = document.getElementById('pnlCurvePageWrap');
-    const img = document.getElementById('pnlShareImage');
-    const status = document.getElementById('pnlShareImageStatus');
+    const hintEl = document.getElementById('pnlShareImageHint');
     if (!target) return;
 
     target.classList.add('p-6');
@@ -440,26 +424,20 @@ async function preparePnlShareImage() {
     }
 
     if (!blob) {
-        status.textContent = 'Failed to prepare image - use the Screenshot button instead.';
+        hintEl.textContent = 'Failed to prepare the chart image - use the Screenshot button and attach it manually.';
         return;
     }
-
-    const objectUrl = URL.createObjectURL(blob);
-    img.onload = () => URL.revokeObjectURL(objectUrl);
-    img.src = objectUrl;
-    img.classList.remove('hidden');
-    status.classList.add('hidden');
 
     if (navigator.clipboard && window.ClipboardItem) {
         try {
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            document.getElementById('pnlShareImageHint').textContent =
-                'Image copied to your clipboard - paste it (Ctrl+V) into the X compose window.';
+            hintEl.textContent = 'Image copied to your clipboard - paste it (Ctrl+V) into the X compose window.';
+            return;
         } catch (clipErr) {
-            console.error('Automatic clipboard write failed:', clipErr);
-            // Leave the default right-click-to-copy hint in place.
+            console.error('Clipboard write failed:', clipErr);
         }
     }
+    hintEl.textContent = 'Could not copy the image automatically - use the Screenshot button and attach it manually.';
 }
 
 function openPnlShareTwitter() {
