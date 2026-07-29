@@ -447,13 +447,14 @@ def panic_close_all():
     """Close all positions across all connected accounts (panic button).
 
     For each active connected account:
-    1. Cancel all pending orders
+    1. Cancel open/trigger-pending orders in the F&O segments AlgoMirror manages
+       (NFO, BFO)
     2. Fetch positionbook to discover open positions
     3. Close each position with freeze-quantity-aware order placement
        (uses splitorder when quantity exceeds freeze limit, regular placeorder otherwise)
 
-    Only the F&O segments AlgoMirror manages (NFO, BFO) are closed; equity,
-    commodity and currency positions held elsewhere are left untouched.
+    Only the F&O segments AlgoMirror manages (NFO, BFO) are touched; orders and
+    positions in equity, commodity and currency held elsewhere are left untouched.
     """
     PANIC_CLOSE_EXCHANGES = {'NFO', 'BFO'}
 
@@ -481,11 +482,40 @@ def panic_close_all():
         try:
             client = ExtendedOpenAlgoAPI(api_key=api_key, host=host_url)
 
-            # Step 1: Cancel all pending orders first
+            # Step 1: Cancel only open/trigger-pending orders in the F&O segments
+            # AlgoMirror manages (NFO, BFO). cancelallorder() would cancel pending
+            # orders in every exchange, including equity/commodity/currency held
+            # elsewhere, so orders are fetched and cancelled individually instead.
             cancel_msg = ''
             try:
-                cancel_response = client.cancelallorder(strategy="AlgoMirror_Panic")
-                cancel_msg = cancel_response.get('message', '')
+                orderbook_response = client.orderbook()
+                if orderbook_response.get('status') == 'success':
+                    orders = orderbook_response.get('data', {}).get('orders', [])
+                    pending_orders = [
+                        o for o in orders
+                        if o.get('exchange') in PANIC_CLOSE_EXCHANGES
+                        and o.get('order_status') in ('open', 'trigger pending')
+                    ]
+
+                    cancelled, failed = 0, 0
+                    for order in pending_orders:
+                        try:
+                            cancel_response = client.cancelorder(
+                                order_id=order.get('orderid'),
+                                strategy="AlgoMirror_Panic"
+                            )
+                            if cancel_response.get('status') == 'success':
+                                cancelled += 1
+                            else:
+                                failed += 1
+                        except Exception:
+                            failed += 1
+
+                    cancel_msg = f'Cancelled {cancelled}/{len(pending_orders)} NFO/BFO order(s)' if pending_orders else 'No pending NFO/BFO orders'
+                    if failed:
+                        cancel_msg += f', {failed} failed'
+                else:
+                    cancel_msg = 'Failed to fetch orderbook for cancellation'
             except Exception as e:
                 cancel_msg = f'Failed to cancel orders: {e}'
 
