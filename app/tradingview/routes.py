@@ -286,13 +286,20 @@ def fetch_spread_historical_data(strategy, legs, interval='5m', days=3):
             host=account.host_url
         )
 
-        # Get actual placed symbols from executions
+        # Get actual placed symbols from OPEN executions only, most recent first.
+        # A leg can have multiple execution rows over time (retries, Supertrend
+        # re-entries, prior expiries) - without this filter/order the first row
+        # encountered could be a stale/closed/expired execution, whose symbol
+        # OpenAlgo's history API will reject, breaking the combined premium for
+        # every leg.
         from app.models import StrategyExecution
         executions = StrategyExecution.query.filter_by(
-            strategy_id=strategy.id
+            strategy_id=strategy.id,
+            status='entered'
         ).filter(
-            StrategyExecution.symbol.isnot(None)
-        ).all()
+            StrategyExecution.symbol.isnot(None),
+            StrategyExecution.symbol != ''
+        ).order_by(StrategyExecution.id.desc()).all()
 
         # Map leg_id to actual placed symbol (quantity will come from leg.lots)
         leg_symbols = {}
