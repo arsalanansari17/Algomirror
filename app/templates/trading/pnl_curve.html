@@ -390,19 +390,10 @@ function buildDefaultPnlShareCaption() {
     return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
 }
 
-async function confirmPnlShare() {
-    const btn = document.getElementById('pnlShareConfirmBtn');
-    const textarea = document.getElementById('pnlShareText');
+// Same capture target/settings as takePnlScreenshot(), returned as a Blob
+// instead of downloaded.
+async function capturePnlShareBlob() {
     const target = document.getElementById('pnlCurvePageWrap');
-    if (!target) return;
-
-    btn.disabled = true;
-    const originalLabel = btn.textContent;
-    btn.textContent = 'Copying...';
-
-    // Same capture target/settings as takePnlScreenshot(), but written to the
-    // clipboard instead of downloaded - the tweet intent URL has no way to
-    // attach an image, so the user pastes it into the compose box instead.
     target.classList.add('p-6');
     try {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -413,26 +404,44 @@ async function confirmPnlShare() {
             useCORS: true,
             ignoreElements: (el) => ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
         });
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
-        if (blob && navigator.clipboard && window.ClipboardItem) {
-            try {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                showToast('Chart image copied - paste it into the X compose window (Ctrl+V).', 'success');
-            } catch (clipErr) {
-                console.error('Clipboard write failed:', clipErr);
-                showToast('Could not copy the image automatically - use the Screenshot button and attach it manually.', 'warning');
-            }
-        } else {
-            showToast('Clipboard image copy is not supported in this browser - use the Screenshot button and attach it manually.', 'warning');
-        }
-    } catch (e) {
-        console.error('Share capture failed:', e);
-        showToast('Failed to capture the chart image.', 'error');
+        return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
     } finally {
         target.classList.remove('p-6');
-        btn.disabled = false;
-        btn.textContent = originalLabel;
     }
+}
+
+async function confirmPnlShare() {
+    const btn = document.getElementById('pnlShareConfirmBtn');
+    const textarea = document.getElementById('pnlShareText');
+
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Copying...';
+
+    if (navigator.clipboard && window.ClipboardItem) {
+        try {
+            // Call clipboard.write() itself with no preceding await, passing
+            // the still-pending capture as a Promise inside ClipboardItem -
+            // Chrome/Edge accept an async-resolved item as long as write()
+            // is invoked synchronously within the click handler. Awaiting
+            // the capture first (the original approach) let the click's
+            // "user activation" expire before write() was ever called, so
+            // it was silently dropped - the compose window only ever had
+            // the text.
+            await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': capturePnlShareBlob() }),
+            ]);
+            showToast('Chart image copied - paste it into the X compose window (Ctrl+V).', 'success');
+        } catch (clipErr) {
+            console.error('Clipboard write failed:', clipErr);
+            showToast('Could not copy the image automatically - use the Screenshot button and attach it manually.', 'warning');
+        }
+    } else {
+        showToast('Clipboard image copy is not supported in this browser - use the Screenshot button and attach it manually.', 'warning');
+    }
+
+    btn.disabled = false;
+    btn.textContent = originalLabel;
 
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(textarea.value)}`, '_blank', 'noopener');
     document.getElementById('pnlShareModal').close();
