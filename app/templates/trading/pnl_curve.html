@@ -22,6 +22,7 @@
             </select>
             {% endif %}
             <span id="pnlCurveUpdatedAt" class="text-xs text-base-content/50"></span>
+            {% if accounts %}
             <button type="button" id="pnlCurveScreenshotBtn" onclick="takePnlScreenshot()" class="btn btn-outline btn-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -41,6 +42,7 @@
                 </svg>
                 <span id="pnlCurveRefreshLabel">Refresh</span>
             </button>
+            {% endif %}
         </div>
     </div>
 
@@ -61,6 +63,7 @@
     </div>
 
     <div id="pnlCurveError" class="hidden alert alert-error"></div>
+    <div id="pnlCurveFailedAccountsWarning" class="hidden alert alert-warning"></div>
 
     <div id="pnlCurveContent" class="hidden">
         <div class="card bg-base-100 shadow-xl">
@@ -179,6 +182,7 @@ const PNL_DRAWDOWN_COLOR = '#f000b8';
 // browser) instead of re-embedding the Jinja value into a JS string, which
 // would double-escape "&" into the literal text "&amp;".
 const defaultPnlTitle = document.getElementById('pnlCurveTitle').textContent;
+const defaultPnlSubtitle = document.getElementById('pnlCurveSubtitle').textContent;
 
 function formatRupee(value) {
     const sign = value >= 0 ? '+' : '';
@@ -238,6 +242,7 @@ function onPnlAccountChange(value) {
 async function loadPnlCurve() {
     const loadingEl = document.getElementById('pnlCurveLoading');
     const errorEl = document.getElementById('pnlCurveError');
+    const failedAccountsEl = document.getElementById('pnlCurveFailedAccountsWarning');
     const contentEl = document.getElementById('pnlCurveContent');
     const refreshBtn = document.getElementById('pnlCurveRefreshBtn');
     const refreshIcon = document.getElementById('pnlCurveRefreshIcon');
@@ -247,6 +252,7 @@ async function loadPnlCurve() {
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
+    failedAccountsEl.classList.add('hidden');
     contentEl.classList.add('hidden');
     refreshBtn.disabled = true;
     refreshIcon.classList.add('hidden');
@@ -269,6 +275,16 @@ async function loadPnlCurve() {
         renderForSelection();
         const t = formatIstTime(Math.floor(Date.now() / 1000));
         document.getElementById('pnlCurveUpdatedAt').textContent = `Updated ${t.hours}:${t.minutes}:${t.seconds} IST`;
+
+        // A per-account fetch failure (broker/tradebook/positionbook error)
+        // makes that account contribute zero to the combined total below,
+        // which otherwise looks like a complete, correct number - flag it
+        // instead of leaving the shortfall invisible.
+        const failedAccounts = lastPnlData.failed_accounts || [];
+        if (failedAccounts.length > 0) {
+            failedAccountsEl.textContent = `Could not fetch data for: ${failedAccounts.join(', ')} - the totals below don't include ${failedAccounts.length > 1 ? 'these accounts' : 'this account'} and may understate your actual P&L.`;
+            failedAccountsEl.classList.remove('hidden');
+        }
     } catch (e) {
         errorEl.textContent = e.message || 'Failed to load P&L data';
         errorEl.classList.remove('hidden');
@@ -397,7 +413,9 @@ function buildDefaultPnlShareCaption() {
     const currentText = (document.getElementById('pnlCurveCurrent').textContent || '').trim();
     const resultLine = lastRenderedCurrentPnl < 0
         ? `🔴 Loss booked: ${currentText}`
-        : `✅ Profit booked: ${currentText}`;
+        : lastRenderedCurrentPnl > 0
+        ? `✅ Profit booked: ${currentText}`
+        : `➖ Flat day: ${currentText}`;
 
     return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
 }
@@ -482,10 +500,15 @@ function preparePnlShareImage() {
 // this is WhatsApp's own decoding, not fixable from our side, so they're
 // stripped only for the WhatsApp link.
 function stripEmojiForWhatsapp(text) {
+    // \p{Extended_Pictographic} alone only catches the base emoji character -
+    // skin-tone modifiers, the ZWJ that joins multi-part sequences (family/
+    // profession emoji), and the paired regional-indicator letters that form
+    // flag emoji are separate codepoints that would otherwise survive and
+    // still reach wa.me in a corrupted form.
     return text
-        .replace(/\p{Extended_Pictographic}\uFE0F?/gu, '')
+        .replace(/[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u200D\uFE0F\u20E3]/gu, '')
         .split('\n')
-        .map((line) => line.replace(/^[ \t]+/, ''))
+        .map((line) => line.replace(/^[ \t]+/, '').replace(/ {2,}/g, ' '))
         .join('\n');
 }
 
@@ -552,6 +575,12 @@ function renderForSelection() {
         titleEl.textContent = selectedPnlAccount === 'all'
             ? defaultPnlTitle
             : `${label} - Intraday P&L Plot`;
+    }
+    const subtitleEl = document.getElementById('pnlCurveSubtitle');
+    if (subtitleEl) {
+        subtitleEl.textContent = selectedPnlAccount === 'all'
+            ? defaultPnlSubtitle
+            : `Mark-to-market curve for ${label}, today only.`;
     }
 
     lastRenderedCurrentPnl = stats.current;
@@ -724,6 +753,17 @@ window.addEventListener('resize', () => {
             width: chartContainer.clientWidth,
             height: chartContainer.clientHeight,
         });
+    }
+});
+
+// drawPnlChart() only picks its grid/text/watermark colors for the theme
+// that's active when the chart is built - toggling light/dark afterward
+// (theme.js's global sun/moon control) left those colors stuck on whatever
+// theme was active at draw time. Full redraw is simplest here since the
+// chart doesn't expose a "just recolor" path for the watermark div.
+window.addEventListener('themechange', () => {
+    if (lastPnlData) {
+        renderForSelection();
     }
 });
 
