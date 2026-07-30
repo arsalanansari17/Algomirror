@@ -163,6 +163,11 @@ let pnlChartInstance = null;
 let pnlBaselineSeries = null;
 let lastPnlData = null;
 let selectedPnlAccount = 'all';
+// Numeric current-MTM value backing the Share caption - kept separate from
+// the formatted display string (formatRupee puts the currency symbol
+// *before* the sign, e.g. "₹-500.00", so checking that string for a
+// leading "-" never matches a loss).
+let lastRenderedCurrentPnl = 0;
 // Single source of truth for P&L/drawdown colors - used for both the chart
 // series AND the stat numbers, so they're never allowed to drift apart the
 // way DaisyUI's themed text-success/text-error classes did (that theme's
@@ -390,27 +395,20 @@ function buildDefaultPnlShareCaption() {
     const dateStr = `${istDate.getUTCDate()} ${months[istDate.getUTCMonth()]} ${istDate.getUTCFullYear()}`;
 
     const currentText = (document.getElementById('pnlCurveCurrent').textContent || '').trim();
-    const resultLine = currentText.startsWith('-')
+    const resultLine = lastRenderedCurrentPnl < 0
         ? `🔴 Loss booked: ${currentText}`
         : `✅ Profit booked: ${currentText}`;
 
     return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
 }
 
-// Captures the chart+stats and writes it straight to the clipboard - no
-// preview shown, since none of the share links can attach it either way and
-// a thumbnail was just extra clutter once the clipboard write itself was
-// confirmed working. The one remaining manual step (Ctrl+V into whichever
-// compose window opens) is a hard platform limitation, not something this
-// can remove: intent links have no media param, and a page can't script a
-// paste into another origin's textarea.
-async function preparePnlShareImage() {
+// Same capture as before, factored out so it can be handed to
+// ClipboardItem as a still-pending Promise (see preparePnlShareImage below)
+// instead of being awaited first.
+async function capturePnlSharePngBlob() {
     const target = document.getElementById('pnlCurvePageWrap');
-    const hintEl = document.getElementById('pnlShareImageHint');
-    if (!target) return;
-
+    if (!target) return null;
     target.classList.add('p-6');
-    let blob = null;
     try {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const canvas = await html2canvas(target, {
@@ -420,28 +418,60 @@ async function preparePnlShareImage() {
             useCORS: true,
             ignoreElements: (el) => ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
         });
-        blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
+        return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
     } catch (e) {
         console.error('Share image capture failed:', e);
+        return null;
     } finally {
         target.classList.remove('p-6');
     }
+}
 
-    if (!blob) {
-        hintEl.textContent = 'Failed to prepare the chart image - use the Screenshot button and attach it manually.';
+// Writes the capture straight to the clipboard - no preview shown, since
+// none of the share links can attach it either way and a thumbnail was just
+// extra clutter once the clipboard write itself was confirmed working. The
+// one remaining manual step (Ctrl+V into whichever compose window opens) is
+// a hard platform limitation, not something this can remove: intent links
+// have no media param, and a page can't script a paste into another
+// origin's textarea.
+//
+// navigator.clipboard.write() must be *called* synchronously within the
+// click's user-activation window, so the still-pending capture is handed to
+// ClipboardItem as a Promise instead of being awaited first - the browser
+// accepts the write call immediately and waits for the image in the
+// background. An earlier version awaited the capture before calling
+// write(), which let the activation window expire and made the clipboard
+// write silently fail in some browsers.
+function preparePnlShareImage() {
+    const hintEl = document.getElementById('pnlShareImageHint');
+
+    if (!(navigator.clipboard && window.ClipboardItem)) {
+        capturePnlSharePngBlob().then((blob) => {
+            hintEl.textContent = blob
+                ? 'Clipboard image copy is not supported in this browser - use the Screenshot button and attach it manually.'
+                : 'Failed to prepare the chart image - use the Screenshot button and attach it manually.';
+        });
         return;
     }
 
-    if (navigator.clipboard && window.ClipboardItem) {
-        try {
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            hintEl.textContent = 'Image copied to your clipboard - paste it (Ctrl+V) into whichever compose window opens.';
-            return;
-        } catch (clipErr) {
+    let captureFailed = false;
+    const blobPromise = capturePnlSharePngBlob().then((blob) => {
+        if (!blob) captureFailed = true;
+        return blob;
+    });
+
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })])
+        .then(() => {
+            hintEl.textContent = captureFailed
+                ? 'Failed to prepare the chart image - use the Screenshot button and attach it manually.'
+                : 'Image copied to your clipboard - paste it (Ctrl+V) into whichever compose window opens.';
+        })
+        .catch((clipErr) => {
             console.error('Clipboard write failed:', clipErr);
-        }
-    }
-    hintEl.textContent = 'Could not copy the image automatically - use the Screenshot button and attach it manually.';
+            hintEl.textContent = captureFailed
+                ? 'Failed to prepare the chart image - use the Screenshot button and attach it manually.'
+                : 'Could not copy the image automatically - use the Screenshot button and attach it manually.';
+        });
 }
 
 // wa.me's `text` param has a long-documented bug where certain pictographic
@@ -524,6 +554,7 @@ function renderForSelection() {
             : `${label} - Intraday P&L Plot`;
     }
 
+    lastRenderedCurrentPnl = stats.current;
     const currentEl = document.getElementById('pnlCurveCurrent');
     currentEl.textContent = formatRupee(stats.current);
     currentEl.style.color = stats.current >= 0 ? PNL_GREEN : PNL_RED;
