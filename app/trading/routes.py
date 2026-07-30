@@ -8,7 +8,7 @@ from app.utils.option_chain import OptionChainManager
 from app.utils.websocket_manager import ProfessionalWebSocketManager
 from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
-from app.utils.rate_limiter import heavy_rate_limit
+from app.utils.rate_limiter import limiter
 from app.utils.pnl_curve import compute_combined_pnl
 from datetime import datetime
 import json
@@ -319,7 +319,12 @@ def pnl_curve_page():
 
 @trading_bp.route('/api/pnl-combined')
 @login_required
-@heavy_rate_limit()
+# Own explicit, more conservative limit rather than the shared
+# heavy_rate_limit() (100/min default) - each hit here fans out into a full
+# tradebook + positionbook + per-symbol 1-minute-candle fetch across every
+# active account, so its real cost per call is much higher than the other
+# "heavy" endpoints that decorator is meant for.
+@limiter.limit("20 per minute")
 def pnl_combined():
     """Combined intraday mark-to-market P&L curve across every active
     account, computed live from each account's tradebook/positionbook/1m
