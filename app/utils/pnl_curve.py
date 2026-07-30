@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 IST = pytz.timezone('Asia/Kolkata')
 
 
+class AccountPnlError(Exception):
+    """Raised when an account's P&L can't be computed because both its
+    tradebook and positionbook fetches failed - distinct from the normal
+    "no trades or positions today" case (which legitimately returns None),
+    so the caller can warn instead of silently treating the account as
+    contributing zero to the combined total."""
+
+
 class _RateLimiter:
     """Per-account throttle for the 1m history calls (2/sec, under the broker's 3/sec cap)."""
 
@@ -92,6 +100,24 @@ def _parse_trade_timestamp(timestamp_str, fallback_date=None):
         return None
 
 
+def _effective_trade_qty(trade):
+    """Quantity to use for a trade, applying the same fallback everywhere it's
+    needed: some broker fill records report quantity=0 with the real size
+    only inferable from trade_value/average_price."""
+    try:
+        qty = float(trade.get('quantity', 0))
+        price = float(trade.get('average_price', 0))
+    except (TypeError, ValueError):
+        return 0.0
+    if qty == 0 and price > 0:
+        try:
+            trade_value = float(trade.get('trade_value', 0) or 0)
+        except (TypeError, ValueError):
+            trade_value = 0
+        qty = 1 if trade_value == price else (trade_value / price if trade_value > 0 else 0)
+    return qty
+
+
 def _history_df(client, symbol, exchange, today_str, rate_limiter):
     """Fetch today's 1m candles for a symbol, indexed by IST datetime. None on failure/empty.
 
@@ -113,63 +139,78 @@ def _history_df(client, symbol, exchange, today_str, rate_limiter):
 
 
 def _build_position_windows(trades_list):
-    """Reconstruct BUY/SELL open/close windows for one symbol's trades, in trade order."""
-    net_position = 0
+    """Reconstruct BUY/SELL open/close windows for one symbol's trades, in
+    trade order. A trade first closes existing opposite-side open windows
+    (oldest first; partial closes split the window into a closed portion and
+    a smaller still-open remainder); any quantity beyond what's open on the
+    opposite side opens a new same-side window. This correctly handles
+    partial closes, full closes, and reversals (a single trade crossing from
+    long to short or vice versa) symmetrically in either direction - a SELL
+    that exceeds an open long closes it and opens a new short for the
+    excess, and just as importantly, a BUY that covers an open short closes
+    it the same way (the original version only ever matched SELL-closes-BUY,
+    so a covering BUY for a short position was never recognized as a close
+    at all and just opened an unrelated second window).
+    """
     windows = []
 
     for trade in trades_list:
+        action = trade.get('action', '')
+        if action not in ('BUY', 'SELL'):
+            continue
+        trade_time = trade.get('parsed_time')
         try:
-            executed_price = float(trade.get('average_price', 0))
-            action = trade.get('action', '')
-            trade_time = trade.get('parsed_time')
-            qty = float(trade.get('quantity', 0))
-            if qty == 0 and executed_price > 0:
-                trade_value = float(trade.get('trade_value', 0))
-                qty = 1 if trade_value == executed_price else (trade_value / executed_price if trade_value > 0 else 0)
-            if qty <= 0:
-                continue
+            executed_price = float(trade.get('average_price', 0) or 0)
         except (TypeError, ValueError):
             continue
+        qty = _effective_trade_qty(trade)
+        if qty <= 0:
+            continue
 
-        if action == 'BUY':
-            windows.append({'start_time': trade_time, 'end_time': None, 'qty': qty,
-                             'price': executed_price, 'action': 'BUY', 'exit_price': None})
-            net_position += qty
-        else:
-            if net_position > 0:
-                remaining = qty
-                for window in windows:
-                    if window['action'] == 'BUY' and window['end_time'] is None and remaining > 0:
-                        close_qty = min(window['qty'], remaining)
-                        if close_qty == window['qty']:
-                            window['end_time'] = trade_time
-                            window['exit_price'] = executed_price
-                        else:
-                            window['qty'] -= close_qty
-                            closed = window.copy()
-                            closed['qty'] = close_qty
-                            closed['end_time'] = trade_time
-                            closed['exit_price'] = executed_price
-                            windows.append(closed)
-                        remaining -= close_qty
-                net_position -= qty
+        opposite = 'SELL' if action == 'BUY' else 'BUY'
+        remaining = qty
+        for window in windows:
+            if remaining <= 0:
+                break
+            if window['action'] != opposite or window['end_time'] is not None:
+                continue
+            close_qty = min(window['qty'], remaining)
+            if close_qty == window['qty']:
+                window['end_time'] = trade_time
+                window['exit_price'] = executed_price
             else:
-                windows.append({'start_time': trade_time, 'end_time': None, 'qty': qty,
-                                 'price': executed_price, 'action': 'SELL', 'exit_price': None})
-                net_position -= qty
+                window['qty'] -= close_qty
+                closed = window.copy()
+                closed['qty'] = close_qty
+                closed['end_time'] = trade_time
+                closed['exit_price'] = executed_price
+                windows.append(closed)
+            remaining -= close_qty
+
+        if remaining > 0:
+            windows.append({'start_time': trade_time, 'end_time': None, 'qty': remaining,
+                             'price': executed_price, 'action': action, 'exit_price': None})
 
     return windows
 
 
-def _replay_symbol_pnl(df_hist, symbol, windows, current_time):
-    """Mark each position window to the historical close price; freeze at realized P&L once closed."""
+def _replay_symbol_pnl(df_hist, col_key, windows, current_time):
+    """Mark each position window to the historical close price; freeze at
+    realized P&L once closed. Each window's contribution is computed as its
+    own independent series and summed at the end, rather than accumulated
+    into one shared column - multiple windows can be open or closing on the
+    same symbol at once (partial closes, reversals), and their contributions
+    must compose additively. The original version wrote every window's
+    result into one shared column and, on close, overwrote every future
+    timestamp with just that window's realized amount - which silently
+    erased any other still-open window's ongoing mark-to-market contribution
+    at those same timestamps (the main symptom: a partial close made the
+    remaining open position's P&L freeze/vanish instead of keep moving).
+    """
     df_hist = df_hist[['close']].copy()
-    df_hist.rename(columns={'close': f'{symbol}_price'}, inplace=True)
-    col = f'{symbol}_pnl'
-    df_hist[col] = 0.0
+    total = pd.Series(0.0, index=df_hist.index)
 
-    cumulative_realized = 0.0
-    for window in sorted(windows, key=lambda w: w['start_time'] or datetime.min.replace(tzinfo=pytz.UTC)):
+    for window in windows:
         if window['start_time'] is None:
             continue
         start = window['start_time']
@@ -181,28 +222,33 @@ def _replay_symbol_pnl(df_hist, symbol, windows, current_time):
         if not has_data and not is_closed:
             continue
 
+        contribution = pd.Series(0.0, index=df_hist.index)
         if has_data:
-            price_col = df_hist.loc[mask, f'{symbol}_price']
+            price_col = df_hist.loc[mask, 'close']
             if window['action'] == 'BUY':
-                df_hist.loc[mask, col] += (price_col - window['price']) * window['qty']
+                contribution.loc[mask] = (price_col - window['price']) * window['qty']
             else:
-                df_hist.loc[mask, col] += (window['price'] - price_col) * window['qty']
+                contribution.loc[mask] = (window['price'] - price_col) * window['qty']
 
         if is_closed:
             if window['action'] == 'BUY':
                 realized = (window['exit_price'] - window['price']) * window['qty']
             else:
                 realized = (window['price'] - window['exit_price']) * window['qty']
-            cumulative_realized += realized
 
-        if window['end_time'] is not None:
             future_mask = df_hist.index > window['end_time']
             if future_mask.any():
-                df_hist.loc[future_mask, col] = cumulative_realized
-            elif cumulative_realized != 0 and len(df_hist) > 0:
-                df_hist.loc[df_hist.index[-1], col] = cumulative_realized
+                contribution.loc[future_mask] = realized
+            elif len(df_hist) > 0:
+                # Close happened at/after the last available candle - no data
+                # to mark the position to between the last candle and the
+                # actual close, so show the known realized result on that
+                # final point rather than a stale pre-close MTM estimate.
+                contribution.iloc[-1] = realized
 
-    return df_hist[[col]]
+        total = total.add(contribution, fill_value=0.0)
+
+    return total.rename(f'{col_key}_pnl').to_frame()
 
 
 def compute_account_series(client, today=None):
@@ -210,149 +256,140 @@ def compute_account_series(client, today=None):
     Reconstruct today's minute-by-minute mark-to-market P&L for one account
     from its tradebook + open positions.
 
-    Returns a pandas Series (IST datetime index -> cumulative Total P&L),
-    or None if the account has neither trades nor open positions today.
+    Returns a pandas Series (IST datetime index -> cumulative Total P&L), or
+    None if the account genuinely has neither trades nor open positions
+    today. Raises AccountPnlError if both the tradebook and positionbook
+    fetches themselves failed - the caller should surface that distinctly
+    rather than silently treating the account as contributing zero.
     """
     rate_limiter = _RateLimiter()
     current_time = datetime.now(IST)
     today_date = today or current_time.date()
     today_str = today_date.strftime('%Y-%m-%d')
 
+    tradebook_ok = False
     try:
         trades_resp = client.tradebook()
+        tradebook_ok = isinstance(trades_resp, dict) and trades_resp.get('status') == 'success'
     except Exception:
         logger.exception('Error fetching tradebook')
         trades_resp = None
-    trades = trades_resp.get('data', []) if isinstance(trades_resp, dict) and trades_resp.get('status') == 'success' else []
+    raw_trades = trades_resp.get('data', []) if tradebook_ok else []
 
+    positionbook_ok = False
     current_positions = {}
     try:
         pos_resp = client.positionbook()
-        if isinstance(pos_resp, dict) and pos_resp.get('status') == 'success':
+        positionbook_ok = isinstance(pos_resp, dict) and pos_resp.get('status') == 'success'
+        if positionbook_ok:
             for pos in pos_resp.get('data', []):
-                key = f"{pos['symbol']}_{pos['exchange']}"
                 try:
+                    key = f"{pos['symbol']}_{pos['exchange']}"
                     current_positions[key] = {
+                        'symbol': pos['symbol'],
+                        'exchange': pos['exchange'],
                         'quantity': float(pos.get('quantity', 0)),
                         'average_price': float(pos.get('average_price', 0)),
-                        'pnl': float(pos.get('pnl', 0) or 0),
                     }
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, KeyError):
                     continue
     except Exception:
         logger.exception('Error fetching positionbook')
 
+    if not tradebook_ok and not positionbook_ok:
+        raise AccountPnlError('Both tradebook and positionbook fetches failed')
+
+    # Some broker tradebook responses aren't guaranteed to be scoped to just
+    # today - drop anything that doesn't actually land on today_date so a
+    # stray prior-session entry can't feed a window with a stale entry price
+    # or (as the original version did) redefine which calendar date the
+    # whole computation targets by taking the earliest trade's date as
+    # "today".
+    trades = []
+    for trade in raw_trades:
+        ts = trade.get('timestamp') or trade.get('fill_timestamp') or trade.get('fill_time')
+        parsed_time = _parse_trade_timestamp(ts, fallback_date=today_date) if ts else None
+        if parsed_time is None or parsed_time.date() != today_date:
+            continue
+        trade = dict(trade)
+        trade['parsed_time'] = parsed_time
+        trades.append(trade)
+
     if not trades and not current_positions:
         return None
-
-    # Determine the trading date from the first trade (handles overnight-carried trades).
-    first_trade_time = None
-    for trade in trades:
-        ts = trade.get('timestamp') or trade.get('fill_timestamp') or trade.get('fill_time')
-        parsed = _parse_trade_timestamp(ts) if ts else None
-        if parsed and (first_trade_time is None or parsed < first_trade_time):
-            first_trade_time = parsed
-    if first_trade_time is None:
-        first_trade_time = current_time.replace(hour=9, minute=15, second=0, microsecond=0)
-    else:
-        today_date = first_trade_time.date()
-        today_str = today_date.strftime('%Y-%m-%d')
 
     symbol_trades = {}
     for trade in trades:
         symbol, exchange = trade.get('symbol', ''), trade.get('exchange', '')
         if not symbol or not exchange:
             continue
-        ts = trade.get('timestamp') or trade.get('fill_timestamp') or trade.get('fill_time')
-        trade = dict(trade)
-        trade['parsed_time'] = _parse_trade_timestamp(ts) if ts else None
         symbol_trades.setdefault(f'{symbol}_{exchange}', []).append(trade)
 
+    all_keys = set(symbol_trades.keys()) | set(current_positions.keys())
     portfolio_pnl = None
 
-    for trades_list in symbol_trades.values():
-        trades_list = sorted(trades_list, key=lambda t: t.get('parsed_time') or datetime.min.replace(tzinfo=pytz.UTC))
-        symbol, exchange = trades_list[0].get('symbol', ''), trades_list[0].get('exchange', '')
+    for pos_key in all_keys:
+        trades_list = sorted(symbol_trades.get(pos_key, []), key=lambda t: t['parsed_time'])
+        pos_data = current_positions.get(pos_key)
+        if trades_list:
+            symbol, exchange = trades_list[0].get('symbol', ''), trades_list[0].get('exchange', '')
+        elif pos_data:
+            symbol, exchange = pos_data['symbol'], pos_data['exchange']
+        else:
+            continue
         if not symbol or not exchange:
             continue
 
-        windows = _build_position_windows(trades_list)
         df_hist = _history_df(client, symbol, exchange, today_str, rate_limiter)
-        if df_hist is None:
+        if df_hist is None or df_hist.empty:
             continue
-        df_hist = df_hist[(df_hist.index >= first_trade_time) & (df_hist.index <= current_time)]
-        if df_hist.empty:
+        # Whatever candle actually opens the symbol's day, rather than
+        # assuming NSE's 09:15 - the original hardcoded 09:15 meant a
+        # carry-forward position's morning MTM could start from the wrong
+        # point (or be silently clipped) for any other exchange/session.
+        day_start = df_hist.index[0]
+
+        # If this symbol carries a position from before today (whether or
+        # not it also traded today), seed a synthetic opening trade for that
+        # overnight quantity at day_start so the normal window-building/
+        # replay logic below tracks it uniformly alongside today's real
+        # trades - handles pure carry-forward (no trades today), carry-
+        # forward closed today, and carry-forward adjusted (not fully
+        # closed) today the same way. The seed price uses positionbook's
+        # average_price, which is exact for a carry-forward left untouched
+        # or fully closed today, and an approximation (blended with today's
+        # fills) if today's trades also added to the position - the best
+        # available without full historical cost-basis tracking across days.
+        seed_trades = []
+        if pos_data:
+            today_net_qty = sum(
+                _effective_trade_qty(t) if t.get('action') == 'BUY' else -_effective_trade_qty(t)
+                for t in trades_list
+            )
+            overnight_qty = pos_data['quantity'] - today_net_qty
+            if abs(overnight_qty) > 1e-6:
+                seed_trades = [{
+                    'action': 'BUY' if overnight_qty > 0 else 'SELL',
+                    'quantity': abs(overnight_qty),
+                    'average_price': pos_data['average_price'],
+                    'parsed_time': day_start,
+                }]
+
+        windows = _build_position_windows(seed_trades + trades_list)
+        if not windows:
             continue
 
-        symbol_pnl = _replay_symbol_pnl(df_hist, symbol, windows, current_time)
+        replay_start = day_start if seed_trades else max(day_start, trades_list[0]['parsed_time'])
+        df_hist_trimmed = df_hist[(df_hist.index >= replay_start) & (df_hist.index <= current_time)]
+        if df_hist_trimmed.empty:
+            continue
+
+        # Keyed by symbol_exchange (not just symbol) so the same symbol
+        # traded on two exchanges the same day (e.g. RELIANCE on NSE and
+        # BSE) gets two distinct columns instead of colliding into one and
+        # failing the join below.
+        symbol_pnl = _replay_symbol_pnl(df_hist_trimmed, pos_key, windows, current_time)
         portfolio_pnl = symbol_pnl if portfolio_pnl is None else portfolio_pnl.join(symbol_pnl, how='outer')
-
-    # Carry-forward positions: open from a prior day (no trade today) or closed today via exit-only trades.
-    for pos_key, pos_data in current_positions.items():
-        parts = pos_key.rsplit('_', 1)
-        if len(parts) != 2:
-            continue
-        symbol, exchange = parts
-        pnl_col = f'{symbol}_pnl'
-        qty, avg_price, position_pnl_value = pos_data['quantity'], pos_data['average_price'], pos_data['pnl']
-
-        if qty != 0 and pos_key not in symbol_trades:
-            df_hist = _history_df(client, symbol, exchange, today_str, rate_limiter)
-            if df_hist is None or df_hist.empty:
-                continue
-            market_open = df_hist.index[0].replace(hour=9, minute=15, second=0, microsecond=0)
-            df_hist = df_hist[(df_hist.index >= market_open) & (df_hist.index <= current_time)]
-            if df_hist.empty:
-                continue
-            price = df_hist['close']
-            pnl = (price - avg_price) * qty if qty > 0 else (avg_price - price) * abs(qty)
-            frame = pnl.rename(pnl_col).to_frame()
-            portfolio_pnl = frame if portfolio_pnl is None else portfolio_pnl.join(frame, how='outer')
-
-        elif qty == 0 and position_pnl_value != 0 and pos_key in symbol_trades:
-            trades_for_symbol = symbol_trades[pos_key]
-            actions = [t.get('action') for t in trades_for_symbol]
-            if 'BUY' in actions and 'SELL' in actions:
-                continue  # same-day round-trip, already handled above
-            if all(a == 'SELL' for a in actions):
-                was_long = True
-            elif all(a == 'BUY' for a in actions):
-                was_long = False
-            else:
-                continue
-
-            total_exit_qty = sum(float(t.get('quantity', 0)) for t in trades_for_symbol)
-            if total_exit_qty == 0:
-                continue
-            total_value = sum(float(t.get('average_price', 0)) * float(t.get('quantity', 0)) for t in trades_for_symbol)
-            exit_price = total_value / total_exit_qty
-            entry_price = (exit_price - position_pnl_value / total_exit_qty if was_long
-                           else exit_price + position_pnl_value / total_exit_qty)
-            close_time = trades_for_symbol[-1].get('parsed_time')
-
-            df_hist = _history_df(client, symbol, exchange, today_str, rate_limiter)
-            if df_hist is None or df_hist.empty:
-                continue
-            market_open = df_hist.index[0].replace(hour=9, minute=15, second=0, microsecond=0)
-            df_hist = df_hist[(df_hist.index >= market_open) & (df_hist.index <= current_time)][['close']].copy()
-            if df_hist.empty:
-                continue
-            df_hist[pnl_col] = 0.0
-            before_close = df_hist.index <= close_time if close_time else pd.Series(True, index=df_hist.index)
-            after_close = df_hist.index > close_time if close_time else pd.Series(False, index=df_hist.index)
-            if was_long:
-                df_hist.loc[before_close, pnl_col] = (df_hist.loc[before_close, 'close'] - entry_price) * total_exit_qty
-            else:
-                df_hist.loc[before_close, pnl_col] = (entry_price - df_hist.loc[before_close, 'close']) * total_exit_qty
-            if after_close.any():
-                df_hist.loc[after_close, pnl_col] = position_pnl_value
-
-            if portfolio_pnl is not None and pnl_col in portfolio_pnl.columns:
-                portfolio_pnl.drop(columns=[pnl_col], inplace=True)
-                if len(portfolio_pnl.columns) == 0:
-                    portfolio_pnl = None
-            frame = df_hist[[pnl_col]]
-            portfolio_pnl = frame if portfolio_pnl is None else portfolio_pnl.join(frame, how='outer')
 
     if portfolio_pnl is None or portfolio_pnl.empty:
         return None
@@ -369,15 +406,22 @@ def compute_combined_pnl(accounts):
     account, applied here across accounts instead.
 
     Returns a dict shaped like OpenAlgo's /pnltracker/api/pnl response, plus
-    a 'per_account' breakdown for the modal's summary cards.
+    a 'per_account' breakdown for the modal's summary cards and a
+    'failed_accounts' list naming any account whose data couldn't be
+    fetched at all - those accounts contribute nothing to the combined
+    total, so the caller needs to know when the total is understated rather
+    than genuinely complete.
     """
     def _one(account):
         try:
             client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
-            return account, compute_account_series(client)
+            return account, compute_account_series(client), None
+        except AccountPnlError as e:
+            logger.error(f'Account {account.id} P&L unavailable: {e}')
+            return account, None, str(e)
         except Exception:
             logger.exception(f'Error computing intraday P&L for account {account.id}')
-            return account, None
+            return account, None, 'Unexpected error computing P&L'
 
     if len(accounts) <= 1:
         results = [_one(accounts[0])] if accounts else []
@@ -386,15 +430,19 @@ def compute_combined_pnl(accounts):
             results = list(executor.map(_one, accounts))
 
     per_account = []
+    failed_accounts = []
     combined = None
-    for account, series in results:
+    for account, series, error in results:
         current_value = float(series.iloc[-1]) if series is not None and len(series) else 0.0
         per_account.append({
             'account_id': account.id,
             'account_name': account.account_name,
             'current_pnl': round(current_value, 2),
             'series': [],
+            'error': error,
         })
+        if error:
+            failed_accounts.append(account.account_name)
         if series is None or series.empty:
             continue
         frame = series.rename(f'account_{account.id}').to_frame()
@@ -404,6 +452,7 @@ def compute_combined_pnl(accounts):
         'current_mtm': 0, 'max_mtm': 0, 'max_mtm_time': None,
         'min_mtm': 0, 'min_mtm_time': None, 'max_drawdown': 0,
         'pnl_series': [], 'drawdown_series': [], 'per_account': per_account,
+        'failed_accounts': failed_accounts,
     }
     if combined is None:
         return empty_result
@@ -443,4 +492,5 @@ def compute_combined_pnl(accounts):
         'pnl_series': pnl_series,
         'drawdown_series': drawdown_series,
         'per_account': per_account,
+        'failed_accounts': failed_accounts,
     }
