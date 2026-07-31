@@ -345,6 +345,11 @@ def compute_account_series(client, today=None):
 
     all_keys = set(symbol_trades.keys()) | set(current_positions.keys())
     portfolio_pnl = None
+    # Candles are symbol+exchange data, not product-specific - an account
+    # holding one instrument across two products (e.g. MIS and CNC on the
+    # same stock) would otherwise fetch the identical series once per
+    # product, doubling broker API calls/latency for no benefit.
+    history_cache = {}
 
     for pos_key in all_keys:
         trades_list = sorted(symbol_trades.get(pos_key, []), key=lambda t: t['parsed_time'])
@@ -358,7 +363,10 @@ def compute_account_series(client, today=None):
         if not symbol or not exchange:
             continue
 
-        df_hist = _history_df(client, symbol, exchange, today_str, rate_limiter)
+        history_key = (symbol, exchange)
+        if history_key not in history_cache:
+            history_cache[history_key] = _history_df(client, symbol, exchange, today_str, rate_limiter)
+        df_hist = history_cache[history_key]
         if df_hist is None or df_hist.empty:
             continue
         # Whatever candle actually opens the symbol's day, rather than
