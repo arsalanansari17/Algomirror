@@ -757,15 +757,21 @@ window.addEventListener('resize', () => {
 });
 
 // drawPnlChart() only picks its grid/text/watermark colors for the theme
-// that's active when the chart is built - toggling light/dark afterward
-// (theme.js's global sun/moon control) left those colors stuck on whatever
-// theme was active at draw time. Full redraw is simplest here since the
-// chart doesn't expose a "just recolor" path for the watermark div.
-window.addEventListener('themechange', () => {
+// that's active when the chart is built - toggling light/dark afterward left
+// those colors stuck on whatever theme was active at draw time. This app
+// has two parallel theme-toggle code paths - the sun/moon button actually
+// wired into the header calls navbar.js's toggleTheme(), which sets
+// data-theme directly and does NOT dispatch any event; a separate,
+// currently-unused theme.js module dispatches a 'themechange' event nothing
+// here can rely on since it isn't the one wired to the visible control. So
+// this watches the data-theme attribute itself instead of trusting either
+// toggle implementation to notify listeners - works regardless of which one
+// is actually in use, now or if that changes later.
+new MutationObserver(() => {
     if (lastPnlData) {
         renderForSelection();
     }
-});
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 document.addEventListener('DOMContentLoaded', () => {
     {% if accounts %}
