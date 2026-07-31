@@ -284,7 +284,14 @@ def compute_account_series(client, today=None):
         if positionbook_ok:
             for pos in pos_resp.get('data', []):
                 try:
-                    key = f"{pos['symbol']}_{pos['exchange']}"
+                    # Product (CNC/MIS/NRML) included in the key - the same
+                    # symbol+exchange can be held in two products at once
+                    # (e.g. an MIS intraday position alongside unrelated CNC
+                    # holdings), which are genuinely separate positions with
+                    # their own qty/avg_price; keying by symbol+exchange
+                    # alone let the second one silently overwrite the first
+                    # in this dict.
+                    key = f"{pos['symbol']}_{pos['exchange']}_{pos.get('product', '')}"
                     current_positions[key] = {
                         'symbol': pos['symbol'],
                         'exchange': pos['exchange'],
@@ -296,8 +303,15 @@ def compute_account_series(client, today=None):
     except Exception:
         logger.exception('Error fetching positionbook')
 
-    if not tradebook_ok and not positionbook_ok:
-        raise AccountPnlError('Both tradebook and positionbook fetches failed')
+    # Both sources are required for a correct picture, not just one: a
+    # failed tradebook (even with a successful, merely-empty positionbook)
+    # would hide every trade made today, including ones that fully closed an
+    # overnight position with no trace left in positionbook; a failed
+    # positionbook would hide carry-forward/adjusted-today exposure. Either
+    # failing alone is enough to make the result unreliable.
+    if not tradebook_ok or not positionbook_ok:
+        failed = [name for name, ok in (('tradebook', tradebook_ok), ('positionbook', positionbook_ok)) if not ok]
+        raise AccountPnlError(f"Failed to fetch: {', '.join(failed)}")
 
     # Some broker tradebook responses aren't guaranteed to be scoped to just
     # today - drop anything that doesn't actually land on today_date so a
@@ -323,7 +337,11 @@ def compute_account_series(client, today=None):
         symbol, exchange = trade.get('symbol', ''), trade.get('exchange', '')
         if not symbol or not exchange:
             continue
-        symbol_trades.setdefault(f'{symbol}_{exchange}', []).append(trade)
+        # Product included in the key, matching current_positions below -
+        # otherwise a same-day trade in one product could get bundled into
+        # window-building for an unrelated position in a different product
+        # on the same symbol+exchange.
+        symbol_trades.setdefault(f"{symbol}_{exchange}_{trade.get('product', '')}", []).append(trade)
 
     all_keys = set(symbol_trades.keys()) | set(current_positions.keys())
     portfolio_pnl = None
@@ -355,23 +373,41 @@ def compute_account_series(client, today=None):
         # replay logic below tracks it uniformly alongside today's real
         # trades - handles pure carry-forward (no trades today), carry-
         # forward closed today, and carry-forward adjusted (not fully
-        # closed) today the same way. The seed price uses positionbook's
-        # average_price, which is exact for a carry-forward left untouched
-        # or fully closed today, and an approximation (blended with today's
-        # fills) if today's trades also added to the position - the best
-        # available without full historical cost-basis tracking across days.
+        # closed) today the same way.
         seed_trades = []
         if pos_data:
-            today_net_qty = sum(
-                _effective_trade_qty(t) if t.get('action') == 'BUY' else -_effective_trade_qty(t)
+            today_signed = [
+                (_effective_trade_qty(t) if t.get('action') == 'BUY' else -_effective_trade_qty(t), t)
                 for t in trades_list
-            )
+            ]
+            today_net_qty = sum(q for q, _ in today_signed)
             overnight_qty = pos_data['quantity'] - today_net_qty
             if abs(overnight_qty) > 1e-6:
+                # positionbook's average_price is the *current* blended
+                # average across the overnight lot and today's fills, not
+                # the overnight lot's own entry price - using it directly as
+                # the seed price double-counts/undercounts today's fills'
+                # contribution once today's trades are added on top. When
+                # every one of today's trades extends the position in the
+                # same direction as the overnight carry (pure adds, no
+                # same-day partial close mixed in), weighted-average cost
+                # basis is linear and the true overnight price can be
+                # recovered exactly by backing today's fills back out of the
+                # blended average. A same-day reduce/close mixed in breaks
+                # that linear decomposition (broker-specific lot-matching
+                # rules take over), so positionbook's blended average is
+                # used as the closest available approximation instead.
+                non_zero = [(q, t) for q, t in today_signed if q != 0]
+                same_direction = all((q > 0) == (overnight_qty > 0) for q, _ in non_zero)
+                if same_direction and non_zero:
+                    today_value = sum(q * float(t.get('average_price', 0) or 0) for q, t in non_zero)
+                    seed_price = (pos_data['average_price'] * pos_data['quantity'] - today_value) / overnight_qty
+                else:
+                    seed_price = pos_data['average_price']
                 seed_trades = [{
                     'action': 'BUY' if overnight_qty > 0 else 'SELL',
                     'quantity': abs(overnight_qty),
-                    'average_price': pos_data['average_price'],
+                    'average_price': seed_price,
                     'parsed_time': day_start,
                 }]
 
@@ -384,10 +420,10 @@ def compute_account_series(client, today=None):
         if df_hist_trimmed.empty:
             continue
 
-        # Keyed by symbol_exchange (not just symbol) so the same symbol
-        # traded on two exchanges the same day (e.g. RELIANCE on NSE and
-        # BSE) gets two distinct columns instead of colliding into one and
-        # failing the join below.
+        # Keyed by pos_key (symbol+exchange+product, not just symbol) so the
+        # same symbol traded on two exchanges, or held in two products on
+        # the same exchange, gets distinct columns instead of colliding into
+        # one and failing the join below.
         symbol_pnl = _replay_symbol_pnl(df_hist_trimmed, pos_key, windows, current_time)
         portfolio_pnl = symbol_pnl if portfolio_pnl is None else portfolio_pnl.join(symbol_pnl, how='outer')
 
