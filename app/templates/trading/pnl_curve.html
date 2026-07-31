@@ -30,6 +30,12 @@
                 </svg>
                 Screenshot
             </button>
+            <button type="button" id="pnlCurveShareBtn" onclick="openPnlShareModal()" class="btn btn-outline btn-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 8.632a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                </svg>
+                Share
+            </button>
             <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="btn btn-primary btn-sm">
                 <svg id="pnlCurveRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -119,6 +125,40 @@
     {% endif %}
 </div>
 
+<!-- Share Dialog - posts via each platform's own web share/intent link, using
+     whatever account is already logged into the browser, so no OAuth app
+     registration or stored credentials are needed for any of them. None of
+     these links can attach an image itself (no media param on any of the
+     three), so it's written to the clipboard instead - the user still has
+     to paste it (Ctrl+V) into whichever compose window opens, which is a
+     hard platform limitation, not a bug: intent links don't support image
+     attachment at all, and a page can't script a paste into another
+     origin's textarea. -->
+<dialog id="pnlShareModal" class="modal">
+    <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg mb-1">Share P&amp;L</h3>
+        <p class="text-sm text-base-content/60 mb-4">Edit your caption, then share.</p>
+
+        <textarea id="pnlShareText" class="textarea textarea-bordered w-full h-40 font-mono text-sm" oninput="updatePnlShareCharCount()"></textarea>
+        <div class="flex justify-end mt-1">
+            <span id="pnlShareCharCount" class="text-xs text-base-content/50"></span>
+        </div>
+        <p class="text-xs text-base-content/40 -mt-0.5">280 is X's own limit - WhatsApp and Telegram allow much more.</p>
+
+        <p id="pnlShareImageHint" class="text-xs text-base-content/50 mt-2">Preparing chart image...</p>
+
+        <div class="modal-action flex-wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="pnlShareModal.close()">Cancel</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openPnlShareIntent('telegram')">Telegram</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openPnlShareIntent('whatsapp')">WhatsApp</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="openPnlShareIntent('x')">X (Twitter)</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
 <script src="{{ url_for('static', filename='js/vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/vendor/html2canvas-pro.min.js') }}"></script>
 <script>
@@ -126,6 +166,11 @@ let pnlChartInstance = null;
 let pnlBaselineSeries = null;
 let lastPnlData = null;
 let selectedPnlAccount = 'all';
+// Numeric current-MTM value backing the Share caption - kept separate from
+// the formatted display string (formatRupee puts the currency symbol
+// *before* the sign, e.g. "₹-500.00", so checking that string for a
+// leading "-" never matches a loss).
+let lastRenderedCurrentPnl = 0;
 // Single source of truth for P&L/drawdown colors - used for both the chart
 // series AND the stat numbers, so they're never allowed to drift apart the
 // way DaisyUI's themed text-success/text-error classes did (that theme's
@@ -203,6 +248,7 @@ async function loadPnlCurve() {
     const refreshIcon = document.getElementById('pnlCurveRefreshIcon');
     const refreshLabel = document.getElementById('pnlCurveRefreshLabel');
     const screenshotBtn = document.getElementById('pnlCurveScreenshotBtn');
+    const shareBtn = document.getElementById('pnlCurveShareBtn');
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
@@ -211,11 +257,12 @@ async function loadPnlCurve() {
     refreshBtn.disabled = true;
     refreshIcon.classList.add('hidden');
     refreshLabel.textContent = 'Loading...';
-    // Also block Screenshot while loading - html2canvas can't render the
+    // Also block Screenshot/Share while loading - html2canvas can't render the
     // CSS-mask-based spinner (shows as a solid box, not a ring) and the
-    // stats/chart are hidden at this point anyway, so a screenshot taken
+    // stats/chart are hidden at this point anyway, so a capture taken
     // mid-load just captures an empty-looking page.
     screenshotBtn.disabled = true;
+    shareBtn.disabled = true;
 
     try {
         const response = await fetch('{{ url_for("trading.pnl_combined") }}');
@@ -247,6 +294,7 @@ async function loadPnlCurve() {
         refreshIcon.classList.remove('hidden');
         refreshLabel.textContent = 'Refresh';
         screenshotBtn.disabled = false;
+        shareBtn.disabled = false;
     }
 }
 
@@ -288,7 +336,7 @@ async function takePnlScreenshot() {
         return;
     }
 
-    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveRefreshBtn'];
+    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
     // html2canvas captures exactly target's own box, not the padding its
@@ -324,6 +372,167 @@ async function takePnlScreenshot() {
         target.classList.remove('p-6');
         btn.disabled = false;
     }
+}
+
+// Twitter/X's standard free-tier compose limit. We have a paid account with
+// no limit, but this feature is meant to be upstreamed to other AlgoMirror
+// users who may not, so the counter warns before they hit a silent
+// truncation/rejection at post time.
+const PNL_SHARE_CHAR_LIMIT = 280;
+
+function openPnlShareModal() {
+    const contentEl = document.getElementById('pnlCurveContent');
+    if (!contentEl || contentEl.classList.contains('hidden')) return;
+    const textarea = document.getElementById('pnlShareText');
+    textarea.value = buildDefaultPnlShareCaption();
+    updatePnlShareCharCount();
+    document.getElementById('pnlShareImageHint').textContent = 'Preparing chart image...';
+
+    document.getElementById('pnlShareModal').showModal();
+    preparePnlShareImage();
+}
+
+function updatePnlShareCharCount() {
+    const len = document.getElementById('pnlShareText').value.length;
+    const countEl = document.getElementById('pnlShareCharCount');
+    countEl.textContent = `${len} / ${PNL_SHARE_CHAR_LIMIT}`;
+    countEl.classList.toggle('text-error', len > PNL_SHARE_CHAR_LIMIT);
+    countEl.classList.toggle('text-base-content/50', len <= PNL_SHARE_CHAR_LIMIT);
+}
+
+// Simple fixed template - no per-index/stock hashtag detection (deliberately
+// out of scope for now). Reads the already-rendered "Current MTM" stat
+// directly so the caption always matches whatever's on screen, including
+// the currently-selected account.
+function buildDefaultPnlShareCaption() {
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(Date.now() + istOffsetMs);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateStr = `${istDate.getUTCDate()} ${months[istDate.getUTCMonth()]} ${istDate.getUTCFullYear()}`;
+
+    const currentText = (document.getElementById('pnlCurveCurrent').textContent || '').trim();
+    const resultLine = lastRenderedCurrentPnl < 0
+        ? `🔴 Loss booked: ${currentText}`
+        : lastRenderedCurrentPnl > 0
+        ? `✅ Profit booked: ${currentText}`
+        : `➖ Flat day: ${currentText}`;
+
+    return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
+}
+
+// Same capture as before, factored out so it can be handed to
+// ClipboardItem as a still-pending Promise (see preparePnlShareImage below)
+// instead of being awaited first.
+async function capturePnlSharePngBlob() {
+    const target = document.getElementById('pnlCurvePageWrap');
+    if (!target) return null;
+    target.classList.add('p-6');
+    try {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const canvas = await html2canvas(target, {
+            backgroundColor: isDark ? '#1f2937' : '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            ignoreElements: (el) => ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
+        });
+        return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
+    } catch (e) {
+        console.error('Share image capture failed:', e);
+        return null;
+    } finally {
+        target.classList.remove('p-6');
+    }
+}
+
+// Writes the capture straight to the clipboard - no preview shown, since
+// none of the share links can attach it either way and a thumbnail was just
+// extra clutter once the clipboard write itself was confirmed working. The
+// one remaining manual step (Ctrl+V into whichever compose window opens) is
+// a hard platform limitation, not something this can remove: intent links
+// have no media param, and a page can't script a paste into another
+// origin's textarea.
+//
+// navigator.clipboard.write() must be *called* synchronously within the
+// click's user-activation window, so the still-pending capture is handed to
+// ClipboardItem as a Promise instead of being awaited first - the browser
+// accepts the write call immediately and waits for the image in the
+// background. An earlier version awaited the capture before calling
+// write(), which let the activation window expire and made the clipboard
+// write silently fail in some browsers.
+function preparePnlShareImage() {
+    const hintEl = document.getElementById('pnlShareImageHint');
+
+    if (!(navigator.clipboard && window.ClipboardItem)) {
+        capturePnlSharePngBlob().then((blob) => {
+            hintEl.textContent = blob
+                ? 'Clipboard image copy is not supported in this browser - use the Screenshot button and attach it manually.'
+                : 'Failed to prepare the chart image - use the Screenshot button and attach it manually.';
+        });
+        return;
+    }
+
+    let captureFailed = false;
+    const blobPromise = capturePnlSharePngBlob().then((blob) => {
+        if (!blob) captureFailed = true;
+        return blob;
+    });
+
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })])
+        .then(() => {
+            hintEl.textContent = captureFailed
+                ? 'Failed to prepare the chart image - use the Screenshot button and attach it manually.'
+                : 'Image copied to your clipboard - paste it (Ctrl+V) into whichever compose window opens.';
+        })
+        .catch((clipErr) => {
+            console.error('Clipboard write failed:', clipErr);
+            hintEl.textContent = captureFailed
+                ? 'Failed to prepare the chart image - use the Screenshot button and attach it manually.'
+                : 'Could not copy the image automatically - use the Screenshot button and attach it manually.';
+        });
+}
+
+// wa.me's `text` param has a long-documented bug where certain pictographic
+// emoji arrive on the receiving end as U+FFFD replacement characters, even
+// though the URL itself is correctly UTF-8 percent-encoded (confirmed: the
+// same string renders fine in our own textarea and via the X/Telegram
+// links, and the source file's emoji are valid UTF-8 codepoints on disk) -
+// this is WhatsApp's own decoding, not fixable from our side, so they're
+// stripped only for the WhatsApp link.
+function stripEmojiForWhatsapp(text) {
+    // \p{Extended_Pictographic} alone only catches the base emoji character -
+    // skin-tone modifiers, the ZWJ that joins multi-part sequences (family/
+    // profession emoji), and the paired regional-indicator letters that form
+    // flag emoji are separate codepoints that would otherwise survive and
+    // still reach wa.me in a corrupted form.
+    return text
+        .replace(/[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u200D\uFE0F\u20E3]/gu, '')
+        .split('\n')
+        .map((line) => line.replace(/^[ \t]+/, '').replace(/ {2,}/g, ' '))
+        .join('\n');
+}
+
+// Each platform's own web share/intent link - no OAuth app or stored
+// credentials for any of them, just a prefilled-text compose window against
+// whatever account is already logged into the browser.
+const PNL_SHARE_INTENT_URLS = {
+    x: (text) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
+    whatsapp: (text) => `https://wa.me/?text=${encodeURIComponent(stripEmojiForWhatsapp(text))}`,
+    // Telegram's share widget requires a non-empty `url` - an empty one just
+    // redirects to telegram.org instead of opening the compose dialog
+    // (confirmed live). There's no public URL for this private, login-gated
+    // page to share, so the caption itself goes into `url` instead of
+    // `text` - a commonly used pattern for text-only Telegram shares, which
+    // the widget accepts without validating it's an actual URL.
+    telegram: (text) => `https://t.me/share/url?url=${encodeURIComponent(text)}`,
+};
+
+function openPnlShareIntent(platform) {
+    const textarea = document.getElementById('pnlShareText');
+    const buildUrl = PNL_SHARE_INTENT_URLS[platform];
+    if (!buildUrl) return;
+    window.open(buildUrl(textarea.value), '_blank', 'noopener');
+    document.getElementById('pnlShareModal').close();
 }
 
 // Running peak-vs-current drawdown, same formula the backend uses for the
@@ -374,6 +583,7 @@ function renderForSelection() {
             : `Mark-to-market curve for ${label}, today only.`;
     }
 
+    lastRenderedCurrentPnl = stats.current;
     const currentEl = document.getElementById('pnlCurveCurrent');
     currentEl.textContent = formatRupee(stats.current);
     currentEl.style.color = stats.current >= 0 ? PNL_GREEN : PNL_RED;
