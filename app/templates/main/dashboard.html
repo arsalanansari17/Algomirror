@@ -84,11 +84,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
             </div>
-            <div class="stat-title">Total Cash</div>
-            <div class="stat-value text-secondary text-2xl lg:text-4xl" id="total-available-cash">
+            <div class="stat-title">Available Margin</div>
+            <div class="stat-value text-secondary text-2xl lg:text-4xl" id="total-available-margin">
                 <span class="loading loading-spinner loading-md"></span>
             </div>
-            <div class="stat-desc">Available Cash</div>
+            <div class="stat-desc">Cash + Collateral</div>
         </div>
 
         <div class="stat">
@@ -145,14 +145,20 @@
                     {% set badge_class = 'badge-success' if status == 'connected'
                         else 'badge-error' if status == 'failed'
                         else 'badge-warning' %}
-                    <span class="badge {{ badge_class }} badge-sm">
-                        {{ status.title() }}
-                    </span>
+                    <div class="flex flex-col items-end gap-1">
+                        <span class="badge {{ badge_class }} badge-sm">
+                            {{ status.title() }}
+                        </span>
+                        <span class="badge badge-sm" id="mode-{{ account.id }}" style="display: none;"></span>
+                    </div>
                 </div>
 
                 <div class="space-y-2">
-                    <div class="flex justify-between">
-                        <span class="text-sm">Available:</span>
+                    <div class="flex justify-between items-start">
+                        <span class="text-sm leading-tight">
+                            Available Margin
+                            <span class="block text-[10px] text-base-content/50">(Cash + Collateral)</span>
+                        </span>
                         <span class="font-semibold" id="available-{{ account.id }}">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
@@ -164,7 +170,7 @@
                         </span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-sm">Cash:</span>
+                        <span class="text-sm">Available Cash:</span>
                         <span class="font-semibold" id="cash-{{ account.id }}">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
@@ -590,7 +596,7 @@ async function confirmClosePositions() {
 // Load account funds AND P&L data in a SINGLE parallel fetch (eliminates duplicate API calls)
 async function loadAccountFunds() {
     const accounts = {{ accounts_json|tojson }};
-    let totalCash = 0;
+    let totalAvailableMargin = 0;
     let totalM2MPnL = 0;
 
     // Add cache-busting timestamp to prevent stale data
@@ -636,7 +642,16 @@ async function loadAccountFunds() {
                     cashEl.textContent = `₹${formatInLakhs(cash)}`;
                 }
 
-                totalCash += cash;
+                totalAvailableMargin += available;
+
+                // --- Mode badge (Live vs Analyzer/simulated) ---
+                const modeEl = document.getElementById(`mode-${account.id}`);
+                if (modeEl && typeof funds.analyze_mode === 'boolean') {
+                    const isAnalyzer = funds.analyze_mode;
+                    modeEl.textContent = isAnalyzer ? 'Analyzer' : 'Live';
+                    modeEl.className = `badge badge-sm ${isAnalyzer ? 'badge-warning' : 'badge-neutral'}`;
+                    modeEl.style.display = 'inline-flex';
+                }
 
                 // --- M2M P&L section (from same response, no extra API call) ---
                 const m2mRealized = parseFloat(funds.m2mrealized) || 0;
@@ -673,10 +688,10 @@ async function loadAccountFunds() {
         }
     }
 
-    // Update total cash
-    const totalCashEl = document.getElementById('total-available-cash');
-    if (totalCashEl) {
-        totalCashEl.textContent = `₹ ${formatInLakhs(totalCash)}`;
+    // Update total available margin
+    const totalAvailableMarginEl = document.getElementById('total-available-margin');
+    if (totalAvailableMarginEl) {
+        totalAvailableMarginEl.textContent = `₹ ${formatInLakhs(totalAvailableMargin)}`;
     }
 
     // Update total M2M P&L

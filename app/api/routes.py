@@ -105,6 +105,36 @@ def get_account_funds(account_id):
                 'message': 'Account not found'
             }), 404
 
+        client_holder = {}
+
+        def get_client():
+            if 'client' not in client_holder:
+                client_holder['client'] = ExtendedOpenAlgoAPI(
+                    api_key=account.get_api_key(),
+                    host=account.host_url,
+                    timeout=8
+                )
+            return client_holder['client']
+
+        # Analyzer (live vs simulated) mode rarely changes, so it's refreshed
+        # on a much longer cadence (5 min) than funds to avoid an extra broker
+        # round-trip on every 15s funds poll.
+        analyzer_mode = account.last_analyzer_mode
+        analyzer_stale = (
+            account.last_analyzer_check is None or
+            (datetime.utcnow() - account.last_analyzer_check).total_seconds() >= 300
+        )
+        if analyzer_stale:
+            try:
+                analyzer_response = get_client().analyzerstatus()
+                if analyzer_response and analyzer_response.get('status') == 'success':
+                    analyzer_mode = bool(analyzer_response.get('data', {}).get('analyze_mode', False))
+                    account.last_analyzer_mode = analyzer_mode
+                    account.last_analyzer_check = datetime.utcnow()
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+
         # Return cached data if fresh (< 30 seconds old)
         # Avoids broker API call (~500ms-2s network latency) on every page load
         if account.last_funds_data and account.last_data_update:
@@ -124,26 +154,19 @@ def get_account_funds(account_id):
                         'net': cached_data.get('net', 0),
                         'm2mrealized': cached_data.get('m2mrealized', 0),
                         'm2munrealized': cached_data.get('m2munrealized', 0),
+                        'analyze_mode': analyzer_mode,
                         'cached': True
                     }
                 })
 
-        # Create API client with a SHORT timeout for this interactive read.
-        # The dashboard aborts the request at ~10s, so a 30s broker timeout plus
-        # the old 2-attempt retry made funds spin past the abort and never
-        # populate. Fail fast within the dashboard's window and fall back to
-        # cached data below if the broker is slow.
-        client = ExtendedOpenAlgoAPI(
-            api_key=account.get_api_key(),
-            host=account.host_url,
-            timeout=8
-        )
-
         # Single attempt - on failure we serve cached data (and the dashboard
-        # polls again in ~15s).
+        # polls again in ~15s). The client has a SHORT timeout for this
+        # interactive read: the dashboard aborts the request at ~10s, so a
+        # 30s broker timeout plus the old 2-attempt retry made funds spin
+        # past the abort and never populate.
         response = None
         try:
-            response = client.funds()
+            response = get_client().funds()
         except Exception:
             response = None
 
@@ -170,7 +193,8 @@ def get_account_funds(account_id):
                     'used_margin': funds_data.get('utiliseddebits', 0),  # Alias for compatibility
                     'net': funds_data.get('net', 0),
                     'm2mrealized': funds_data.get('m2mrealized', 0),
-                    'm2munrealized': funds_data.get('m2munrealized', 0)
+                    'm2munrealized': funds_data.get('m2munrealized', 0),
+                    'analyze_mode': analyzer_mode
                 }
             })
         elif account.last_funds_data:
@@ -189,6 +213,7 @@ def get_account_funds(account_id):
                     'net': cached_data.get('net', 0),
                     'm2mrealized': cached_data.get('m2mrealized', 0),
                     'm2munrealized': cached_data.get('m2munrealized', 0),
+                    'analyze_mode': analyzer_mode,
                     'cached': True
                 }
             })
