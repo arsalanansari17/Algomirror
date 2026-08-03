@@ -145,7 +145,7 @@
                     {% set badge_class = 'badge-success' if status == 'connected'
                         else 'badge-error' if status == 'failed'
                         else 'badge-warning' %}
-                    <div class="flex flex-col items-end gap-1">
+                    <div class="flex items-center gap-2">
                         <span class="badge badge-sm" id="mode-{{ account.id }}" style="display: none;"></span>
                         <span class="badge {{ badge_class }} badge-sm">
                             {{ status.title() }}
