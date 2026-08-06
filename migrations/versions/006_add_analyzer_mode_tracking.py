@@ -1,7 +1,7 @@
 """Add analyzer mode tracking to trading_accounts
 
 Revision ID: 006_add_analyzer_mode
-Revises: 005_add_app_settings
+Revises: 004_fix_trade_quality_labels
 Create Date: 2026-08-03
 
 Adds last_analyzer_mode/last_analyzer_check so the dashboard can show
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '006_add_analyzer_mode'
-down_revision = '005_add_app_settings'
+down_revision = '004_fix_trade_quality_labels'
 branch_labels = None
 depends_on = None
 

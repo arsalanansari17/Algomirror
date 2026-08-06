@@ -402,7 +402,6 @@ let pollingIntervals = {
     metrics: null,
     funds: null,
     pnl: null,
-    mode: null,
     tradingHoursCheck: null
 };
 
@@ -686,38 +685,6 @@ async function loadAccountFunds() {
     }
 }
 
-// Load Live/Analyze mode for each account (from OpenAlgo's analyzer status)
-async function loadAccountModes() {
-    const accounts = {{ accounts_json|tojson }};
-    const timestamp = Date.now();
-
-    const fetchPromises = accounts.map(account =>
-        fetch(`/api/accounts/${account.id}/mode?_t=${timestamp}`, { signal: AbortSignal.timeout(10000) })
-            .then(response => response.json())
-            .then(data => ({ account, data, success: true }))
-            .catch(error => ({ account, error, success: false }))
-    );
-
-    const results = await Promise.allSettled(fetchPromises);
-
-    for (const result of results) {
-        if (result.status !== 'fulfilled') continue;
-
-        const { account, data, success } = result.value;
-        const modeEl = document.getElementById(`mode-${account.id}`);
-        if (!modeEl) continue;
-
-        if (success && data.status === 'success' && data.data) {
-            const isAnalyze = !!data.data.analyze_mode;
-            modeEl.textContent = isAnalyze ? 'Analyze' : 'Live';
-            modeEl.className = `badge badge-sm ${isAnalyze ? 'badge-warning' : 'badge-success'}`;
-        } else {
-            modeEl.textContent = '--';
-            modeEl.className = 'badge badge-sm badge-ghost';
-        }
-    }
-}
-
 // Load Strategy P&L (AlgoMirror tracked positions) - separate from broker M2M P&L
 async function loadStrategyPnL() {
     const accounts = {{ accounts_json|tojson }};
@@ -809,12 +776,10 @@ function startPolling() {
     loadStrategyMetrics();
     loadAccountFunds();
     loadStrategyPnL();
-    loadAccountModes();
 
     pollingIntervals.metrics = setInterval(loadStrategyMetrics, 10000);  // 10 seconds
     pollingIntervals.funds = setInterval(loadAccountFunds, 15000);       // 15 seconds (funds + M2M P&L combined)
     pollingIntervals.pnl = setInterval(loadStrategyPnL, 10000);          // 10 seconds
-    pollingIntervals.mode = setInterval(loadAccountModes, 30000);        // 30 seconds (rarely changes)
 }
 
 // Stop polling intervals
@@ -830,10 +795,6 @@ function stopPolling() {
     if (pollingIntervals.pnl) {
         clearInterval(pollingIntervals.pnl);
         pollingIntervals.pnl = null;
-    }
-    if (pollingIntervals.mode) {
-        clearInterval(pollingIntervals.mode);
-        pollingIntervals.mode = null;
     }
 }
 
@@ -1195,7 +1156,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadStrategyMetrics();
     loadAccountFunds();
     loadStrategyPnL();
-    loadAccountModes();
 
     checkTradingHours();
     pollingIntervals.tradingHoursCheck = setInterval(checkTradingHours, 60000);

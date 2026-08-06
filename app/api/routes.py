@@ -89,8 +89,12 @@ def get_account_funds(account_id):
     Returns cached data if fresh (< 30s) to avoid slow broker API calls."""
     try:
         from app.utils.openalgo_client import ExtendedOpenAlgoAPI
-        from datetime import datetime
+        from datetime import datetime, timezone
         from app import db
+
+        def utcnow():
+            # naive UTC (not datetime.utcnow(), deprecated on 3.12+) - stays naive since SQLite drops tzinfo on read
+            return datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Verify account belongs to current user
         account = TradingAccount.query.filter_by(
@@ -122,7 +126,7 @@ def get_account_funds(account_id):
         analyzer_mode = account.last_analyzer_mode
         analyzer_stale = (
             account.last_analyzer_check is None or
-            (datetime.utcnow() - account.last_analyzer_check).total_seconds() >= 300
+            (utcnow() - account.last_analyzer_check).total_seconds() >= 300
         )
         if analyzer_stale:
             try:
@@ -130,7 +134,7 @@ def get_account_funds(account_id):
                 if analyzer_response and analyzer_response.get('status') == 'success':
                     analyzer_mode = bool(analyzer_response.get('data', {}).get('analyze_mode', False))
                     account.last_analyzer_mode = analyzer_mode
-                    account.last_analyzer_check = datetime.utcnow()
+                    account.last_analyzer_check = utcnow()
                     db.session.commit()
             except Exception:
                 db.session.rollback()
