@@ -187,19 +187,10 @@ def qualities():
                 'message': str(e)
             }), 400
 
-    # GET request
-    qualities = TradeQuality.query.filter_by(
-        user_id=current_user.id
-    ).all()
-
-    if not qualities:
-        TradeQuality.get_or_create_defaults(current_user.id)
-        qualities = TradeQuality.query.filter_by(
-            user_id=current_user.id
-        ).all()
-
-    return render_template('margin/qualities.html',
-                         qualities=qualities)
+    # GET request - the standalone qualities page was folded into the
+    # Requirements page's "Trade Quality Settings" editor (same POST endpoint
+    # above), so there's nothing left for a dedicated qualities.html to show.
+    return redirect(url_for('margin.requirements'))
 
 @margin_bp.route('/calculator')
 @login_required
@@ -427,10 +418,25 @@ def refresh_tracker(account_id):
 
         if response.get('status') == 'success':
             funds_data = response.get('data', {})
+            total_margin = float(funds_data.get('availablecash', 0)) + float(funds_data.get('utiliseddebits', 0))
+            used_margin = float(funds_data.get('utiliseddebits', 0))
+            free_margin = float(funds_data.get('availablecash', 0))
 
             # Update cached data
             account.last_funds_data = funds_data
             account.last_data_update = datetime.utcnow()
+
+            # Persist to the tracker row too - refresh_tracker previously only
+            # cached funds on the account and never wrote the computed figures
+            # back to MarginTracker, so a page reload showed stale data forever.
+            tracker = MarginTracker.query.filter_by(account_id=account.id).first()
+            if tracker:
+                tracker.total_available_margin = total_margin
+                tracker.used_margin = used_margin
+                tracker.free_margin = free_margin
+                tracker.last_updated = account.last_data_update
+                tracker.update_count = (tracker.update_count or 0) + 1
+
             db.session.commit()
 
             # Convert to IST
@@ -441,9 +447,9 @@ def refresh_tracker(account_id):
             return jsonify({
                 'status': 'success',
                 'data': {
-                    'total_margin': float(funds_data.get('availablecash', 0)) + float(funds_data.get('utiliseddebits', 0)),
-                    'used_margin': float(funds_data.get('utiliseddebits', 0)),
-                    'free_margin': float(funds_data.get('availablecash', 0)),
+                    'total_margin': total_margin,
+                    'used_margin': used_margin,
+                    'free_margin': free_margin,
                     'available_cash': float(funds_data.get('availablecash', 0)),
                     'collateral': float(funds_data.get('collateral', 0)),
                     'utilized_debits': float(funds_data.get('utiliseddebits', 0)),
