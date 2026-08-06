@@ -621,11 +621,13 @@ async function loadAccountFunds() {
                 const funds = data.data;
 
                 // --- Funds section ---
-                const available = parseFloat(funds.availablecash) || 0;
+                // funds.availablecash is pure free cash (see openalgo's zerodha
+                // adapter: total_available_margin algebraically simplifies to
+                // net cash, not cash+collateral) - total margin adds collateral.
+                const cash = parseFloat(funds.availablecash) || 0;
                 const collateral = parseFloat(funds.collateral) || 0;
                 const margin = parseFloat(funds.utiliseddebits || funds.used_margin) || 0;
-                // Margin eats from collateral first, then cash
-                const cash = available - Math.max(0, collateral - margin);
+                const available = cash + collateral;
 
                 const availableEl = document.getElementById(`available-${account.id}`);
                 if (availableEl) {
