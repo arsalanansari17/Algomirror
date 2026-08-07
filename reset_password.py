@@ -28,6 +28,9 @@ def prompt_new_password():
     while True:
         password = getpass.getpass("New password: ")
         password2 = getpass.getpass("Confirm password: ")
+        if not password:
+            print("[ERROR] Password cannot be empty.\n")
+            continue
         if password != password2:
             print("[ERROR] Passwords do not match. Try again.\n")
             continue
@@ -40,7 +43,11 @@ def prompt_new_password():
 
 
 def main():
-    app = create_app()
+    # start_background_services=False: this is a one-off CLI action, not the
+    # running app - it has no business starting pollers/threads or pinging
+    # the primary account (which can flip connection_status in the DB), and
+    # doing so risks racing the real gunicorn process if it's still up.
+    app = create_app(start_background_services=False)
 
     with app.app_context():
         users = User.query.all()
@@ -76,7 +83,7 @@ def main():
         ))
         db.session.commit()
 
-        print(f"[SUCCESS] Password reset for {user.username}.")
+        print(f"[SUCCESS] Password reset for {user.username}. Existing sessions have been logged out.")
 
 
 if __name__ == '__main__':

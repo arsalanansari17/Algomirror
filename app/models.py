@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
 import os
+import secrets
 import pytz
 from dotenv import load_dotenv
 from app import db, login_manager
@@ -43,23 +44,33 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = db.Column(db.DateTime)
-    
+
+    # Rotated on every password change so existing sessions/remember-me
+    # cookies (which embed this via get_id()) stop authenticating - without
+    # it a password reset doesn't actually revoke access already granted to
+    # a stolen/forgotten session.
+    session_token = db.Column(db.String(32), default=lambda: secrets.token_hex(16))
+
     # Relationships
     accounts = db.relationship('TradingAccount', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     logs = db.relationship('ActivityLog', backref='user', lazy='dynamic', cascade='all, delete-orphan')
-    
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-    
+        self.session_token = secrets.token_hex(16)
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-    
+
     def get_active_accounts(self):
         return self.accounts.filter_by(is_active=True).all()
-    
+
     def get_primary_account(self):
         return self.accounts.filter_by(is_active=True, is_primary=True).first()
-    
+
+    def get_id(self):
+        return f'{self.id}:{self.session_token}'
+
     def __repr__(self):
         return f'<User {self.username}>'
 
@@ -917,4 +928,14 @@ class RiskEvent(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    # user_id is "{id}:{session_token}" (see User.get_id()) - a mismatched
+    # or missing token means the password was reset since this session/
+    # remember-me cookie was issued, so treat it as logged out.
+    try:
+        raw_id, token = user_id.split(':', 1)
+        user = User.query.get(int(raw_id))
+    except (ValueError, TypeError):
+        return None
+    if not user or not token or user.session_token != token:
+        return None
+    return user
