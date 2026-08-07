@@ -1,5 +1,6 @@
 from flask import jsonify, request, make_response
 from flask_login import login_required, current_user
+from datetime import datetime, timezone
 from app.api import api_bp
 from app.models import TradingAccount
 from app.utils.rate_limiter import api_rate_limit
@@ -13,6 +14,11 @@ def no_cache_response(data, status=200):
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+def utcnow():
+    # naive UTC (not datetime.utcnow(), deprecated on 3.12+) - stays naive since SQLite drops tzinfo on read
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 @api_bp.route('/accounts')
 @login_required
@@ -89,7 +95,6 @@ def get_account_funds(account_id):
     Returns cached data if fresh (< 30s) to avoid slow broker API calls."""
     try:
         from app.utils.openalgo_client import ExtendedOpenAlgoAPI
-        from datetime import datetime
         from app import db
 
         # Verify account belongs to current user
@@ -138,7 +143,7 @@ def get_account_funds(account_id):
         # Return cached data if fresh (< 30 seconds old)
         # Avoids broker API call (~500ms-2s network latency) on every page load
         if account.last_funds_data and account.last_data_update:
-            cache_age = (datetime.utcnow() - account.last_data_update).total_seconds()
+            cache_age = (utcnow() - account.last_data_update).total_seconds()
             if cache_age < 30:
                 cached_data = account.last_funds_data
                 return no_cache_response({
@@ -176,7 +181,7 @@ def get_account_funds(account_id):
             # Cache the data (non-blocking - don't hold up reads if DB is busy)
             try:
                 account.last_funds_data = funds_data
-                account.last_data_update = datetime.utcnow()
+                account.last_data_update = utcnow()
                 db.session.commit()
             except Exception:
                 db.session.rollback()
@@ -237,7 +242,6 @@ def get_account_pnl(account_id):
     try:
         from app.models import Strategy, StrategyExecution
         from app.utils.openalgo_client import ExtendedOpenAlgoAPI
-        from datetime import datetime, timezone
         from app import db
 
         # Verify account belongs to current user
@@ -254,7 +258,7 @@ def get_account_pnl(account_id):
             }), 404
 
         # Calculate today's P&L for this specific account
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Get all executions for this account today
         today_executions = StrategyExecution.query.join(Strategy).filter(
