@@ -828,7 +828,7 @@ class MarginTracker(db.Model):
     __tablename__ = 'margin_trackers'
 
     id = db.Column(db.Integer, primary_key=True)
-    account_id = db.Column(db.Integer, db.ForeignKey('trading_accounts.id'), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('trading_accounts.id'), nullable=False, unique=True)
 
     # Available margins
     total_available_margin = db.Column(db.Float, default=0)
@@ -852,15 +852,17 @@ class MarginTracker(db.Model):
 
     def update_margins(self, funds_data):
         """Update margins from funds API response"""
+        # OpenAlgo's funds fields are strings (e.g. "availablecash": "320.66") -
+        # cast explicitly so these Float columns don't end up holding text.
         # OpenAlgo returns 'availablecash' which is already net of used margin
-        self.total_available_margin = funds_data.get('availablecash', 0)
+        self.total_available_margin = float(funds_data.get('availablecash', 0) or 0)
         # OpenAlgo returns 'utiliseddebits' for margin currently in use
-        self.used_margin = funds_data.get('utiliseddebits', 0)
+        self.used_margin = float(funds_data.get('utiliseddebits', 0) or 0)
         # availablecash is already the free margin (broker has deducted utiliseddebits)
         self.free_margin = self.total_available_margin
-        self.span_margin = funds_data.get('spanmargin', 0)
-        self.exposure_margin = funds_data.get('exposuremargin', 0)
-        self.option_premium = funds_data.get('optionpremium', 0)
+        self.span_margin = float(funds_data.get('spanmargin', 0) or 0)
+        self.exposure_margin = float(funds_data.get('exposuremargin', 0) or 0)
+        self.option_premium = float(funds_data.get('optionpremium', 0) or 0)
         self.last_updated = datetime.utcnow()
         # Handle None case for update_count
         if self.update_count is None:

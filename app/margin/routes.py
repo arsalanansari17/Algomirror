@@ -8,6 +8,7 @@ from app.models import (
 )
 from app.utils.margin_calculator import MarginCalculator
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import pytz
 import logging
@@ -381,15 +382,23 @@ def tracker():
         tracker = MarginTracker.query.filter_by(account_id=account.id).first()
 
         if not tracker:
-            # Fetch initial margin data
+            # Fetch initial margin data - get_available_margin() itself
+            # creates+commits a MarginTracker row on a successful fetch (via
+            # update_margins()), so re-query rather than assume one still
+            # needs creating here; account_id is unique, so blindly creating
+            # a second row would fail with an IntegrityError.
             available_margin = calculator.get_available_margin(account)
-            tracker = MarginTracker(
-                account_id=account.id,
-                total_available_margin=available_margin,
-                free_margin=available_margin
-            )
-            db.session.add(tracker)
-            db.session.commit()
+            tracker = MarginTracker.query.filter_by(account_id=account.id).first()
+            if not tracker:
+                # Fetch failed outright (e.g. broker unreachable) - nothing
+                # was created above, so create the row ourselves.
+                tracker = MarginTracker(
+                    account_id=account.id,
+                    total_available_margin=available_margin,
+                    free_margin=available_margin
+                )
+                db.session.add(tracker)
+                db.session.commit()
 
         trackers.append({
             'account': account,
@@ -446,6 +455,15 @@ def refresh_tracker(account_id):
             if not tracker:
                 tracker = MarginTracker(account_id=account.id)
                 db.session.add(tracker)
+                try:
+                    # account_id is unique - surface a concurrent create here
+                    # (e.g. two near-simultaneous first refreshes) rather than
+                    # let it fail lower down after update_margins() has
+                    # already mutated this now-orphaned object.
+                    db.session.flush()
+                except IntegrityError:
+                    db.session.rollback()
+                    tracker = MarginTracker.query.filter_by(account_id=account.id).first()
             tracker.update_margins(funds_data)
 
             db.session.commit()
