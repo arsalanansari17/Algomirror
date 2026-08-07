@@ -9,9 +9,19 @@ from app.models import (
 from app.utils.margin_calculator import MarginCalculator
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit
 from datetime import datetime
+import pytz
 import logging
 
 logger = logging.getLogger(__name__)
+
+IST_TZ = pytz.timezone('Asia/Kolkata')
+
+
+def _format_ist(naive_utc_dt):
+    """Format a naive-UTC datetime as IST, matching refresh_tracker's on-refresh format."""
+    if not naive_utc_dt:
+        return 'Not yet refreshed'
+    return pytz.utc.localize(naive_utc_dt).astimezone(IST_TZ).strftime('%d-%b %I:%M %p IST')
 
 @margin_bp.route('/')
 @login_required
@@ -383,7 +393,8 @@ def tracker():
 
         trackers.append({
             'account': account,
-            'tracker': tracker
+            'tracker': tracker,
+            'last_updated_str': _format_ist(tracker.last_updated)
         })
 
     return render_template('margin/tracker.html',
@@ -395,7 +406,6 @@ def tracker():
 def refresh_tracker(account_id):
     """Refresh margin data for specific account"""
     from app.utils.openalgo_client import ExtendedOpenAlgoAPI
-    import pytz
 
     try:
         account = TradingAccount.query.filter_by(
@@ -418,44 +428,40 @@ def refresh_tracker(account_id):
 
         if response.get('status') == 'success':
             funds_data = response.get('data', {})
-            total_margin = float(funds_data.get('availablecash', 0)) + float(funds_data.get('utiliseddebits', 0))
-            used_margin = float(funds_data.get('utiliseddebits', 0))
-            free_margin = float(funds_data.get('availablecash', 0))
 
             # Update cached data
             account.last_funds_data = funds_data
             account.last_data_update = datetime.utcnow()
 
-            # Persist to the tracker row too - refresh_tracker previously only
-            # cached funds on the account and never wrote the computed figures
-            # back to MarginTracker, so a page reload showed stale data forever.
+            # Persist to the tracker row too, via the same update_margins()
+            # used everywhere else a MarginTracker gets written (e.g.
+            # MarginCalculator.get_available_margin()) - refresh_tracker
+            # previously recomputed its own total_margin definition
+            # (availablecash + utiliseddebits) that disagreed with
+            # update_margins()'s (availablecash alone), so a refresh would
+            # silently change what the number meant. It also only updated an
+            # existing row, so refreshing an account before its first
+            # /margin/tracker visit created the row dropped the fetch.
             tracker = MarginTracker.query.filter_by(account_id=account.id).first()
-            if tracker:
-                tracker.total_available_margin = total_margin
-                tracker.used_margin = used_margin
-                tracker.free_margin = free_margin
-                tracker.last_updated = account.last_data_update
-                tracker.update_count = (tracker.update_count or 0) + 1
+            if not tracker:
+                tracker = MarginTracker(account_id=account.id)
+                db.session.add(tracker)
+            tracker.update_margins(funds_data)
 
             db.session.commit()
-
-            # Convert to IST
-            ist_tz = pytz.timezone('Asia/Kolkata')
-            utc_time = pytz.utc.localize(account.last_data_update)
-            last_updated_ist = utc_time.astimezone(ist_tz)
 
             return jsonify({
                 'status': 'success',
                 'data': {
-                    'total_margin': total_margin,
-                    'used_margin': used_margin,
-                    'free_margin': free_margin,
+                    'total_margin': tracker.total_available_margin,
+                    'used_margin': tracker.used_margin,
+                    'free_margin': tracker.free_margin,
                     'available_cash': float(funds_data.get('availablecash', 0)),
                     'collateral': float(funds_data.get('collateral', 0)),
                     'utilized_debits': float(funds_data.get('utiliseddebits', 0)),
                     'm2m_realized': float(funds_data.get('m2mrealized', 0)),
                     'm2m_unrealized': float(funds_data.get('m2munrealized', 0)),
-                    'last_updated': last_updated_ist.strftime('%d-%b %I:%M %p IST')
+                    'last_updated': _format_ist(account.last_data_update)
                 }
             })
         else:

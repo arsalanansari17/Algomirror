@@ -21,10 +21,11 @@
             {% else %}
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {% for strategy in strategies %}
+                {% set leg_count = strategy.legs.count() %}
                 <a href="{{ url_for('tradingview.strategy_monitor', strategy_id=strategy.id) }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
                     <div class="card-body">
                         <h3 class="card-title text-base">{{ strategy.name }}</h3>
-                        <p class="text-sm text-base-content/60">{{ strategy.legs.count() }} leg{% if strategy.legs.count() != 1 %}s{% endif %}</p>
+                        <p class="text-sm text-base-content/60">{{ leg_count }} leg{% if leg_count != 1 %}s{% endif %}</p>
                     </div>
                 </a>
                 {% endfor %}

@@ -37,21 +37,21 @@
                 <div class="space-y-2">
                     <div class="flex justify-between">
                         <span class="text-sm">Total Margin:</span>
-                        <span class="font-semibold" id="total-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.total_available_margin) }}</span>
+                        <span class="font-semibold" id="total-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.total_available_margin or 0) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm">Used Margin:</span>
-                        <span class="font-semibold" id="used-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.used_margin) }}</span>
+                        <span class="font-semibold" id="used-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.used_margin or 0) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm">Free Margin:</span>
-                        <span class="font-semibold" id="free-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.free_margin) }}</span>
+                        <span class="font-semibold" id="free-margin-{{ account.id }}">₹{{ "{:,.0f}".format(tracker.free_margin or 0) }}</span>
                     </div>
                 </div>
 
                 <div class="pt-3 border-t mt-3">
                     <p class="text-xs text-base-content/50" id="last-updated-{{ account.id }}">
-                        {% if tracker.last_updated %}Last updated: {{ tracker.last_updated.strftime('%d-%b %I:%M %p') }}{% else %}Not yet refreshed{% endif %}
+                        {% if tracker.last_updated %}Last updated: {{ entry.last_updated_str }}{% else %}Not yet refreshed{% endif %}
                     </p>
                 </div>
             </div>
@@ -65,7 +65,10 @@
 function showNotification(message, type = 'info') {
     const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info';
     const alertDiv = document.createElement('div');
-    alertDiv.innerHTML = `<div class="alert ${alertClass} fixed bottom-4 right-4 z-50 max-w-md"><span>${message}</span></div>`;
+    alertDiv.className = `alert ${alertClass} fixed bottom-4 right-4 z-50 max-w-md`;
+    const span = document.createElement('span');
+    span.textContent = message;
+    alertDiv.appendChild(span);
     document.body.appendChild(alertDiv);
     setTimeout(() => alertDiv.remove(), 3000);
 }
