@@ -8,8 +8,11 @@ Two code paths could each create a MarginTracker for the same account_id
 with no coordination (MarginCalculator.get_available_margin() and the
 /margin/tracker and /margin/refresh-tracker routes), so a first-time fetch
 or two near-simultaneous refreshes could leave more than one row per
-account. Dedupes existing duplicates (keeping the highest id, i.e. the
-most recently created row, per account) before adding the constraint.
+account. Dedupes existing duplicates before adding the constraint, keeping
+the row with the most recent last_updated (falling back to the highest id
+only as a tiebreaker) - the highest id is just the most recently *created*
+row, not necessarily the one later refreshes kept updating, so picking by
+id alone risks deleting the actively-used row.
 """
 from alembic import op
 import sqlalchemy as sa

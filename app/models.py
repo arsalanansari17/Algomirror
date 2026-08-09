@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask_login import UserMixin
+from flask_login import UserMixin, login_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
 import os
@@ -953,8 +953,12 @@ def load_user(user_id):
         # inserted outside the ORM default - self-heal via get_id() rather
         # than reject, or this user could never authenticate again (a
         # fresh login embeds this same "None" token and hits the same
-        # rejection).
+        # rejection). get_id() alone only fixes the DB row - the session
+        # cookie still carries the old "id:None" id, so without re-running
+        # login_user() here the next request re-reads that stale cookie and
+        # gets logged out again a moment later.
         user.get_id()
+        login_user(user)
         return user
     if user.session_token != token:
         return None
