@@ -725,7 +725,7 @@ function renderMergedView() {
 
         let qty = 0, weightedAvgNum = 0, invested = 0, current = 0, pnl = 0;
         let freeQty = 0, t1Qty = 0, pledgedQty = 0;
-        let dayPnl = 0, dayPrevCloseVal = 0, hasDayData = false;
+        let dayPnl = 0, dayPrevCloseVal = 0, hasDayData = false, dayChangePercent = null;
         const accountNames = [];
         const strategies = new Set();
         group.forEach(row => {
@@ -742,6 +742,11 @@ function renderMergedView() {
                 hasDayData = true;
                 dayPnl += parseFloat(row.dataset.daypnl) || 0;
                 dayPrevCloseVal += parseFloat(row.dataset.dayprevcloseval) || 0;
+                // Day Chg% (ltp vs. prev close) is a market-level figure, not
+                // account-specific - every account holding this symbol should
+                // report (almost) the same value, so any one of them is a
+                // valid representative rather than something to blank out.
+                if (dayChangePercent === null) dayChangePercent = parseFloat(row.dataset.daychangepercent) || 0;
             }
             if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
             if (row.dataset.strategy) strategies.add(row.dataset.strategy);
@@ -762,9 +767,11 @@ function renderMergedView() {
         if (hasDayData) {
             merged.dataset.daypnl = dayPnl;
             merged.dataset.dayprevcloseval = dayPrevCloseVal;
+            merged.dataset.daychangepercent = dayChangePercent;
         } else {
             delete merged.dataset.daypnl;
             delete merged.dataset.dayprevcloseval;
+            merged.dataset.daychangepercent = 0;
         }
 
         const acctCell = merged.querySelector('.account-cell');
@@ -816,9 +823,19 @@ function renderMergedView() {
             pnlPercentCell.classList.toggle('text-error', pnlPercent < 0);
         }
         // LTP is left as-is (group[0]'s value) - same symbol quotes the same live price on every account.
-        // Day Chg% is per-share and not meaningful once merged across accounts/lots - the aggregate Day's
-        // P&L stat above still includes this row correctly via data-daypnl/data-dayprevcloseval.
-        merged.querySelector('.daychg-cell').innerHTML = '<span class="text-base-content/40">-</span>';
+        const daychgCell = merged.querySelector('.daychg-cell');
+        if (daychgCell) {
+            if (hasDayData) {
+                daychgCell.textContent = dayChangePercent.toFixed(2) + '%';
+                daychgCell.classList.toggle('text-success', dayChangePercent >= 0);
+                daychgCell.classList.toggle('text-error', dayChangePercent < 0);
+                daychgCell.classList.remove('text-base-content/50');
+            } else {
+                daychgCell.textContent = '-';
+                daychgCell.classList.remove('text-success', 'text-error');
+                daychgCell.classList.add('text-base-content/50');
+            }
+        }
 
         group[group.length - 1].after(merged);
     });

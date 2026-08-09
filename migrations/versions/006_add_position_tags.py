@@ -17,8 +17,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '009_add_position_tags'
-down_revision = '008_unique_tracker'
+revision = '006_add_position_tags'
+down_revision = '005_add_app_settings'
 branch_labels = None
 depends_on = None
 
