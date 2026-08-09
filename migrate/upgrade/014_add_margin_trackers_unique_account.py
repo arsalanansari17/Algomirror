@@ -65,19 +65,23 @@ def downgrade(db):
     PostgreSQL CONSTRAINT (via the Alembic migration's
     create_unique_constraint, which DROP INDEX can't remove there) or as a
     plain INDEX (via this migration's CREATE UNIQUE INDEX, which SQLite has
-    no DROP CONSTRAINT for) - whichever doesn't apply just no-ops/fails
-    silently.
+    no DROP CONSTRAINT for). Only the SQLite "no such syntax" case is an
+    expected no-op - anything else is a real failure and gets surfaced
+    rather than silently treated as if the downgrade succeeded.
     """
     try:
         db.session.execute(text(
             "ALTER TABLE margin_trackers DROP CONSTRAINT IF EXISTS ux_margin_trackers_account_id"
         ))
         db.session.commit()
-    except Exception:
+    except Exception as e:
         db.session.rollback()
+        if 'syntax error' not in str(e).lower():
+            print(f"WARNING: unexpected error dropping margin_trackers constraint: {e}")
 
     try:
         db.session.execute(text("DROP INDEX IF EXISTS ux_margin_trackers_account_id"))
         db.session.commit()
-    except Exception:
+    except Exception as e:
         db.session.rollback()
+        print(f"WARNING: failed to drop index ux_margin_trackers_account_id: {e}")
