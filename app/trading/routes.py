@@ -2,7 +2,7 @@ from flask import render_template, request, jsonify, current_app, Response, flas
 from flask_login import login_required, current_user
 from app import db
 from app.trading import trading_bp
-from app.models import TradingAccount, TradingHoursTemplate, TradingSession, MarketHoliday, SpecialTradingSession
+from app.models import TradingAccount, TradingHoursTemplate, TradingSession, MarketHoliday, SpecialTradingSession, PositionTag
 from app.utils.openalgo_client import ExtendedOpenAlgoAPI
 from app.utils.option_chain import OptionChainManager
 from app.utils.websocket_manager import ProfessionalWebSocketManager
@@ -387,6 +387,11 @@ def holdings():
         except Exception as e:
             current_app.logger.warning(f'Could not fetch day-change quotes for account {account.id}: {e}')
 
+    # Symbols confirmed live for an account this request - only these
+    # accounts are eligible for stale-tag cleanup below (a fetch failure
+    # falling back to cached data is "unknown", not "closed").
+    live_symbols_by_account = {}
+
     for account, response in results:
         if response and response.get('status') == 'success':
             data = response.get('data', {})
@@ -394,6 +399,7 @@ def holdings():
             enrich_holdings(holding_list, account)
             attach_day_change(holding_list, account)
             holdings_data.extend(holding_list)
+            live_symbols_by_account[account.id] = {h.get('symbol') for h in holding_list if h.get('symbol')}
 
             # Update cache
             account.last_holdings_data = data
@@ -408,6 +414,34 @@ def holdings():
             enrich_holdings(holding_list, account)
             attach_day_change(holding_list, account)
             holdings_data.extend(holding_list)
+
+    # Manual strategy tags: join onto every row being displayed (including
+    # ones served from cached fallback data), but only prune a tag whose
+    # symbol has dropped out of a *successfully-fetched* account's live
+    # holdings this request - a fetch failure falling back to cached data is
+    # "unknown," not "closed," so it must never trigger deletion.
+    strategy_names = set()
+    displayed_account_ids = {h.get('account_id') for h in holdings_data if h.get('account_id') is not None}
+    if displayed_account_ids:
+        tags = PositionTag.query.filter(PositionTag.account_id.in_(displayed_account_ids)).all()
+        stale = [
+            t for t in tags
+            if t.account_id in live_symbols_by_account and t.symbol not in live_symbols_by_account[t.account_id]
+        ]
+        if stale:
+            for t in stale:
+                db.session.delete(t)
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        stale_ids = {t.id for t in stale}
+        tag_map = {(t.account_id, t.symbol): t.strategy for t in tags if t.id not in stale_ids}
+        for holding in holdings_data:
+            tag = tag_map.get((holding.get('account_id'), holding.get('symbol')))
+            if tag:
+                holding['strategy'] = tag
+                strategy_names.add(tag)
 
     # Calculate statistics from the per-row invested/current values (accurate,
     # includes T1/pledged quantity, avoids the old pnl/pnlpercent back-derivation)
@@ -456,7 +490,76 @@ def holdings():
                          statistics=statistics,
                          single_account=len(accounts) == 1,
                          selected_account_id=get_selected_account_id(),
-                         accounts=current_user.get_active_accounts())
+                         accounts=current_user.get_active_accounts(),
+                         strategy_names=sorted(strategy_names))
+
+
+@trading_bp.route('/holdings/tag', methods=['POST'])
+@login_required
+@api_rate_limit()
+def tag_holding():
+    """Assign (or change) a manual strategy tag on a holding. Keyed on
+    (account_id, symbol) only - see PositionTag in app/models.py."""
+    payload = request.get_json(silent=True) or {}
+    account_id = payload.get('account_id')
+    symbol = (payload.get('symbol') or '').strip()
+    strategy = (payload.get('strategy') or '').strip()
+
+    if not account_id or not symbol or not strategy:
+        return jsonify({'status': 'error', 'message': 'Missing account_id/symbol/strategy'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    tag = PositionTag.query.filter_by(account_id=account.id, symbol=symbol).first()
+    if tag:
+        tag.strategy = strategy
+    else:
+        tag = PositionTag(account_id=account.id, symbol=symbol, strategy=strategy)
+        db.session.add(tag)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error tagging holding {symbol} for account {account_id}: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to save tag'}), 500
+
+    return jsonify({'status': 'success', 'symbol': symbol, 'strategy': strategy})
+
+
+@trading_bp.route('/holdings/untag', methods=['POST'])
+@login_required
+@api_rate_limit()
+def untag_holding():
+    """Remove a manual strategy tag from a holding."""
+    payload = request.get_json(silent=True) or {}
+    account_id = payload.get('account_id')
+    symbol = (payload.get('symbol') or '').strip()
+
+    if not account_id or not symbol:
+        return jsonify({'status': 'error', 'message': 'Missing account_id/symbol'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    tag = PositionTag.query.filter_by(account_id=account.id, symbol=symbol).first()
+    if tag:
+        db.session.delete(tag)
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f'Error untagging holding {symbol} for account {account_id}: {e}')
+            return jsonify({'status': 'error', 'message': 'Failed to remove tag'}), 500
+
+    return jsonify({'status': 'success', 'symbol': symbol})
 
 
 def _find_open_position(client, symbol, exchange, product):
