@@ -77,11 +77,13 @@ def downgrade(db):
     except Exception as e:
         db.session.rollback()
         if 'syntax error' not in str(e).lower():
-            print(f"WARNING: unexpected error dropping margin_trackers constraint: {e}")
+            print(f"ERROR: unexpected error dropping margin_trackers constraint: {e}")
+            raise
 
     try:
         db.session.execute(text("DROP INDEX IF EXISTS ux_margin_trackers_account_id"))
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"WARNING: failed to drop index ux_margin_trackers_account_id: {e}")
+        print(f"ERROR: failed to drop index ux_margin_trackers_account_id: {e}")
+        raise
