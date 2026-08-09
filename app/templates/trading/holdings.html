@@ -6,6 +6,11 @@
 {% block page_title %}Holdings{% endblock %}
 
 {% block content %}
+<datalist id="strategyNamesList">
+    {% for name in strategy_names %}
+    <option value="{{ name }}"></option>
+    {% endfor %}
+</datalist>
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex justify-between items-center flex-wrap gap-3">
@@ -37,6 +42,15 @@
                 <span id="holdingsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
             </button>
 
+            {% if not single_account and accounts|length > 1 %}
+            <button id="mergeAccountsBtn" onclick="toggleMergeView()" class="btn btn-outline btn-sm h-9">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
+                </svg>
+                Merge Accounts
+            </button>
+            {% endif %}
+
             <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -58,6 +72,7 @@
         <span class="text-sm text-base-content/70">Active Filters:</span>
         <span id="filterChipT1" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has T1 Quantity</span>
         <span id="filterChipPledged" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has Pledged Quantity</span>
+        <span id="filterChipsStrategy"></span>
         <span id="filterChipSearch" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30"></span>
         <button onclick="clearHoldingsFilters()" class="btn btn-outline btn-error btn-xs">Clear All</button>
     </div>
@@ -121,6 +136,7 @@
                             <th>Account</th>
                             {% endif %}
                             <th class="cursor-pointer select-none" onclick="sortHoldings('symbol')">Symbol <span class="sort-arrow" data-col="symbol"></span></th>
+                            <th>Strategy</th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('qty')">Quantity <span class="sort-arrow" data-col="qty"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('avgprice')">Avg. Price <span class="sort-arrow" data-col="avgprice"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('ltp')">LTP <span class="sort-arrow" data-col="ltp"></span></th>
@@ -148,35 +164,48 @@
                             data-pnl="{{ holding.pnl or 0 }}"
                             data-pnlpercent="{{ holding.pnlpercent or 0 }}"
                             data-daychangepercent="{{ holding.day_change_percent if holding.day_change_percent is defined else 0 }}"
-                            data-allocation="{{ holding.allocation }}">
+                            data-allocation="{{ holding.allocation }}"
+                            data-strategy="{{ holding.strategy or '' }}"
+                            data-account-name="{{ holding.account_name }}">
                             {% if not single_account %}
-                            <td>
+                            <td class="account-cell">
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(holding.account_id, holding.account_name + ' · ' + holding.broker) }}
                                     <div>
-                                        <div class="text-xs font-medium">{{ holding.account_name }}</div>
+                                        <div class="text-xs font-medium account-name-text">{{ holding.account_name }}</div>
                                         <div class="text-xs opacity-50">{{ holding.broker }}</div>
                                     </div>
                                 </div>
                             </td>
                             {% endif %}
                             <td class="font-semibold">{{ holding.symbol }}</td>
-                            <td class="font-mono text-right">
+                            <td>
+                                <input type="text"
+                                       list="strategyNamesList"
+                                       value="{{ holding.strategy or '' }}"
+                                       data-original="{{ holding.strategy or '' }}"
+                                       data-account-id="{{ holding.account_id }}"
+                                       data-symbol="{{ holding.symbol }}"
+                                       placeholder="Tag..."
+                                       class="input input-bordered input-xs w-28 strategy-input"
+                                       onchange="onStrategyTagChange(this)">
+                            </td>
+                            <td class="qty-cell font-mono text-right">
                                 {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: {{ t1|int }}</span>{% endif %}
                                 {% if pledged > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">P: {{ pledged|int }}</span>{% endif %}
-                                {{ holding.quantity }}
+                                <span class="qty-value">{{ holding.quantity }}</span>
                             </td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.invested) }}</td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(holding.current) }}</td>
-                            <td class="font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}">
+                            <td class="avgprice-cell font-mono text-right">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
+                            <td class="ltp-cell font-mono text-right">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
+                            <td class="invested-cell font-mono text-right">₹{{ "%.2f"|format(holding.invested) }}</td>
+                            <td class="current-cell font-mono text-right">₹{{ "%.2f"|format(holding.current) }}</td>
+                            <td class="pnl-cell font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}">
                                 ₹{{ "%.2f"|format(holding.pnl|float) if holding.pnl else "0.00" }}
                             </td>
-                            <td class="text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
+                            <td class="pnlpercent-cell text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
                                 {{ "%.2f"|format(holding.pnlpercent|float) if holding.pnlpercent else "0.00" }}%
                             </td>
-                            <td class="text-right {{ 'text-success' if holding.day_change_percent is defined and holding.day_change_percent >= 0 else 'text-error' if holding.day_change_percent is defined else 'text-base-content/50' }}">
+                            <td class="daychg-cell text-right {{ 'text-success' if holding.day_change_percent is defined and holding.day_change_percent >= 0 else 'text-error' if holding.day_change_percent is defined else 'text-base-content/50' }}">
                                 {{ "%.2f"|format(holding.day_change_percent) ~ "%" if holding.day_change_percent is defined else "-" }}
                             </td>
                             <td class="allocation-cell font-mono text-right text-base-content/70">{{ "%.2f"|format(holding.allocation) }}%</td>
@@ -185,7 +214,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="font-bold bg-base-200">
-                            <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
+                            <td colspan="{{ 4 if not single_account else 3 }}" class="text-right">Total:</td>
                             <td></td>
                             <td></td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
@@ -257,6 +286,19 @@
             <p class="text-xs text-base-content/50">Selecting both shows holdings matching either.</p>
         </div>
 
+        {% if strategy_names %}
+        <div class="divider my-1"></div>
+
+        <div class="space-y-2 mb-5">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Strategy</label>
+            <div id="strategyFilterBtns" class="flex flex-wrap gap-2">
+                {% for name in strategy_names %}
+                <button type="button" class="btn btn-sm btn-outline rounded-full" onclick="toggleStrategyFilter('{{ name }}', this)">{{ name }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="divider my-1"></div>
 
         <div class="space-y-2">
@@ -283,7 +325,8 @@ const HOLDINGS_STORAGE_KEY = 'algomirror_holdings_prefs';
 const TOTAL_CURRENT_VALUE = {{ statistics.totalholdingvalue if statistics else 0 }};
 const TOTAL_INVESTED_VALUE = {{ statistics.totalinvvalue if statistics else 0 }};
 
-let holdingsFilters = { hasT1: false, hasPledged: false };
+let holdingsFilters = { hasT1: false, hasPledged: false, strategy: [] };
+let mergeViewOn = false;
 let allocationBasis = 'current';
 let holdingsSort = { col: null, dir: 'asc' };
 
@@ -293,6 +336,7 @@ function loadHoldingsPrefs() {
         if (saved.filters) {
             holdingsFilters.hasT1 = !!saved.filters.hasT1;
             holdingsFilters.hasPledged = !!saved.filters.hasPledged;
+            holdingsFilters.strategy = saved.filters.strategy || [];
         }
         if (saved.allocationBasis === 'current' || saved.allocationBasis === 'invested') {
             allocationBasis = saved.allocationBasis;
@@ -306,6 +350,14 @@ function saveHoldingsPrefs() {
 
 function toggleHoldingsFilter(key) {
     holdingsFilters[key] = !holdingsFilters[key];
+    saveHoldingsPrefs();
+    syncFilterButtons();
+    applyHoldingsFilters();
+}
+
+function toggleStrategyFilter(name, btn) {
+    const idx = holdingsFilters.strategy.indexOf(name);
+    if (idx > -1) holdingsFilters.strategy.splice(idx, 1); else holdingsFilters.strategy.push(name);
     saveHoldingsPrefs();
     syncFilterButtons();
     applyHoldingsFilters();
@@ -336,11 +388,20 @@ function syncFilterButtons() {
         ? 'Weight by market value today (qty × LTP).'
         : 'Weight by cost basis (qty × avg. price).';
 
-    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged;
+    document.querySelectorAll('#strategyFilterBtns button').forEach(btn => {
+        const active = holdingsFilters.strategy.includes(btn.textContent.trim());
+        btn.classList.toggle('btn-primary', active);
+        btn.classList.toggle('btn-outline', !active);
+    });
+
+    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged || holdingsFilters.strategy.length > 0;
     document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !hasActive && !currentSearchQuery());
 
     document.getElementById('filterChipT1').classList.toggle('hidden', !holdingsFilters.hasT1);
     document.getElementById('filterChipPledged').classList.toggle('hidden', !holdingsFilters.hasPledged);
+    document.getElementById('filterChipsStrategy').innerHTML = holdingsFilters.strategy.map(v =>
+        `<span class="badge bg-pink-500/10 text-pink-600 border border-pink-500/30 mr-1">${v}</span>`
+    ).join('');
 }
 
 function recomputeAllocationColumn() {
@@ -364,7 +425,7 @@ function clearHoldingsSearch() {
 }
 
 function clearHoldingsFilters() {
-    holdingsFilters = { hasT1: false, hasPledged: false };
+    holdingsFilters = { hasT1: false, hasPledged: false, strategy: [] };
     document.getElementById('holdingsSearch').value = '';
     saveHoldingsPrefs();
     syncFilterButtons();
@@ -387,13 +448,14 @@ function applyHoldingsFilters() {
             const matchesPledged = holdingsFilters.hasPledged && row.dataset.hasPledged === '1';
             if (!matchesT1 && !matchesPledged) show = false;
         }
+        if (holdingsFilters.strategy.length && !holdingsFilters.strategy.includes(row.dataset.strategy)) show = false;
         row.classList.toggle('hidden', !show);
         if (show) visible++;
     });
 
     const total = rows.length;
     const countEl = document.getElementById('holdingsCount');
-    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged || query !== '';
+    const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged || holdingsFilters.strategy.length > 0 || query !== '';
     countEl.textContent = hasActive
         ? `${visible} of ${total} stock${total === 1 ? '' : 's'}`
         : `${total} stock${total === 1 ? '' : 's'}`;
@@ -401,7 +463,9 @@ function applyHoldingsFilters() {
     document.getElementById('holdingsActiveFilters').classList.toggle('hidden', !hasActive);
     document.getElementById('holdingsActiveFilters').classList.toggle('flex', hasActive);
     document.getElementById('holdingsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
-    document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !(holdingsFilters.hasT1 || holdingsFilters.hasPledged));
+    document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !(holdingsFilters.hasT1 || holdingsFilters.hasPledged || holdingsFilters.strategy.length > 0));
+
+    if (mergeViewOn) renderMergedView();
 }
 
 function sortHoldings(col, silent) {
@@ -482,6 +546,151 @@ function exportToCSV(type) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+async function onStrategyTagChange(input) {
+    const accountId = input.dataset.accountId;
+    const symbol = input.dataset.symbol;
+    const value = input.value.trim();
+    const original = input.dataset.original;
+    if (value === original) return;
+
+    input.disabled = true;
+    try {
+        const url = value === ''
+            ? "{{ url_for('trading.untag_holding') }}"
+            : "{{ url_for('trading.tag_holding') }}";
+        const body = value === ''
+            ? { account_id: accountId, symbol: symbol }
+            : { account_id: accountId, symbol: symbol, strategy: value };
+        const resp = await fetchWithCSRF(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            alert(data.message || 'Failed to update tag');
+            input.value = original;
+            input.disabled = false;
+            return;
+        }
+        // Full reload rather than a partial DOM patch - the filter chip list
+        // and datalist suggestions are server-rendered from strategy_names,
+        // so a new/removed tag needs a fresh render to stay consistent.
+        location.reload();
+    } catch (e) {
+        alert('Failed to update tag');
+        input.value = original;
+        input.disabled = false;
+    }
+}
+
+function toggleMergeView() {
+    mergeViewOn = !mergeViewOn;
+    const btn = document.getElementById('mergeAccountsBtn');
+    if (btn) {
+        btn.classList.toggle('btn-primary', mergeViewOn);
+        btn.classList.toggle('btn-outline', !mergeViewOn);
+    }
+    if (mergeViewOn) {
+        renderMergedView();
+    } else {
+        clearMergedView();
+        applyHoldingsFilters();
+    }
+}
+
+function clearMergedView() {
+    document.querySelectorAll('#holdingsTbody tr.merged-row').forEach(row => row.remove());
+    document.querySelectorAll('#holdingsTbody tr.merge-hidden').forEach(row => {
+        row.classList.remove('merge-hidden', 'hidden');
+    });
+}
+
+// Client-side only - combines rows for the same symbol across accounts into
+// one synthetic row (summed qty, quantity-weighted avg price, summed P&L),
+// listing the combined accounts in the Account cell instead of hiding the
+// column. Nothing is persisted; toggling off just restores the original rows.
+function renderMergedView() {
+    clearMergedView();
+    const tbody = document.getElementById('holdingsTbody');
+    const visibleRows = Array.from(tbody.querySelectorAll('tr:not(.hidden):not(.merged-row)'));
+
+    const groups = {};
+    visibleRows.forEach(row => {
+        (groups[row.dataset.symbol] = groups[row.dataset.symbol] || []).push(row);
+    });
+
+    Object.values(groups).forEach(group => {
+        if (group.length < 2) return;
+
+        let qty = 0, weightedAvgNum = 0, invested = 0, current = 0, pnl = 0;
+        const accountNames = [];
+        const strategies = new Set();
+        group.forEach(row => {
+            const q = parseFloat(row.dataset.qty) || 0;
+            qty += q;
+            weightedAvgNum += q * (parseFloat(row.dataset.avgprice) || 0);
+            invested += parseFloat(row.dataset.invested) || 0;
+            current += parseFloat(row.dataset.current) || 0;
+            pnl += parseFloat(row.dataset.pnl) || 0;
+            if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
+            if (row.dataset.strategy) strategies.add(row.dataset.strategy);
+            row.classList.add('hidden', 'merge-hidden');
+        });
+        const avgPrice = qty !== 0 ? weightedAvgNum / qty : 0;
+        const pnlPercent = invested !== 0 ? (pnl / invested * 100) : 0;
+
+        const merged = group[0].cloneNode(true);
+        merged.classList.remove('hidden', 'merge-hidden');
+        merged.classList.add('merged-row');
+        merged.dataset.qty = qty;
+        merged.dataset.avgprice = avgPrice;
+        merged.dataset.invested = invested;
+        merged.dataset.current = current;
+        merged.dataset.pnl = pnl;
+        merged.dataset.pnlpercent = pnlPercent;
+
+        const acctCell = merged.querySelector('.account-cell');
+        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium">${accountNames.join(', ')}</div>`;
+
+        const strategyCell = merged.querySelector('.strategy-input')?.closest('td');
+        if (strategyCell) {
+            strategyCell.innerHTML = strategies.size
+                ? Array.from(strategies).map(s => `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 mr-1">${s}</span>`).join('')
+                : '<span class="text-base-content/40">-</span>';
+        }
+
+        const qtyValue = merged.querySelector('.qty-value');
+        if (qtyValue) qtyValue.textContent = qty;
+        // T1/Pledged badges (if any) belong to a single account's holding and don't sum meaningfully - drop them on the merged row.
+        merged.querySelectorAll('.qty-cell .badge').forEach(el => el.remove());
+
+        const avgCell = merged.querySelector('.avgprice-cell');
+        if (avgCell) avgCell.textContent = '₹' + avgPrice.toFixed(2);
+        const investedCell = merged.querySelector('.invested-cell');
+        if (investedCell) investedCell.textContent = '₹' + invested.toFixed(2);
+        const currentCell = merged.querySelector('.current-cell');
+        if (currentCell) currentCell.textContent = '₹' + current.toFixed(2);
+        const pnlCell = merged.querySelector('.pnl-cell');
+        if (pnlCell) {
+            pnlCell.textContent = '₹' + pnl.toFixed(2);
+            pnlCell.classList.toggle('text-success', pnl >= 0);
+            pnlCell.classList.toggle('text-error', pnl < 0);
+        }
+        const pnlPercentCell = merged.querySelector('.pnlpercent-cell');
+        if (pnlPercentCell) {
+            pnlPercentCell.textContent = pnlPercent.toFixed(2) + '%';
+            pnlPercentCell.classList.toggle('text-success', pnlPercent >= 0);
+            pnlPercentCell.classList.toggle('text-error', pnlPercent < 0);
+        }
+        // LTP is left as-is (group[0]'s value) - same symbol quotes the same live price on every account.
+        merged.querySelector('.daychg-cell').innerHTML = '<span class="text-base-content/40">-</span>';
+        merged.querySelector('.allocation-cell').textContent = '-';
+
+        group[group.length - 1].after(merged);
+    });
 }
 </script>
 {% endblock %}
