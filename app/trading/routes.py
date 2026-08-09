@@ -519,6 +519,12 @@ def holdings():
             ltp = float(holding.get('ltp', 0) or 0) or float(holding.get('average_price', 0) or 0)
             prev_close = ltp - holding['day_change']
             holding['day_change_percent'] = (holding['day_change'] / prev_close * 100) if prev_close else 0
+            # Per-row contribution to the aggregate Day's P&L stat, so the
+            # frontend can recompute that stat over whatever subset of rows
+            # is currently visible (filtered and/or merged) instead of only
+            # ever showing the unfiltered, all-holdings total.
+            holding['day_pnl_value'] = holding['day_change'] * holding.get('total_qty', 0)
+            holding['day_prevclose_value'] = prev_close * holding.get('total_qty', 0)
     if day_change_items:
         total_day_pnl = sum(h['day_change'] * h.get('total_qty', 0) for h in day_change_items)
         total_prev_close_value = sum(
