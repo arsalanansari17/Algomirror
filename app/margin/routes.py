@@ -398,7 +398,13 @@ def tracker():
                     free_margin=available_margin
                 )
                 db.session.add(tracker)
-                db.session.commit()
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    # A concurrent request (e.g. two tabs loading this page
+                    # at once) created the row between our check and commit.
+                    db.session.rollback()
+                    tracker = MarginTracker.query.filter_by(account_id=account.id).first()
 
         trackers.append({
             'account': account,
@@ -454,15 +460,20 @@ def refresh_tracker(account_id):
             tracker = MarginTracker.query.filter_by(account_id=account.id).first()
             if not tracker:
                 tracker = MarginTracker(account_id=account.id)
-                db.session.add(tracker)
                 try:
                     # account_id is unique - surface a concurrent create here
                     # (e.g. two near-simultaneous first refreshes) rather than
                     # let it fail lower down after update_margins() has
-                    # already mutated this now-orphaned object.
-                    db.session.flush()
+                    # already mutated this now-orphaned object. Scoped to a
+                    # SAVEPOINT so only this insert rolls back on conflict -
+                    # a plain session-wide rollback would also discard the
+                    # account.last_funds_data/last_data_update assignments
+                    # above, leaving the response's last_updated stale even
+                    # though the margins did refresh.
+                    with db.session.begin_nested():
+                        db.session.add(tracker)
+                        db.session.flush()
                 except IntegrityError:
-                    db.session.rollback()
                     tracker = MarginTracker.query.filter_by(account_id=account.id).first()
             tracker.update_margins(funds_data)
 

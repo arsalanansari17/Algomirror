@@ -25,10 +25,24 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
 
+    # Keep the row with the most recent last_updated per account (falling
+    # back to highest id only as a tiebreaker) - the highest id is just the
+    # most recently *created* row, not necessarily the one later refreshes
+    # kept updating, so picking by id alone risks deleting the actively-used
+    # row.
     bind.execute(sa.text("""
         DELETE FROM margin_trackers
         WHERE id NOT IN (
-            SELECT MAX(id) FROM margin_trackers GROUP BY account_id
+            SELECT keep_id FROM (
+                SELECT t1.id AS keep_id
+                FROM margin_trackers t1
+                WHERE t1.id = (
+                    SELECT t2.id FROM margin_trackers t2
+                    WHERE t2.account_id = t1.account_id
+                    ORDER BY (t2.last_updated IS NULL) ASC, t2.last_updated DESC, t2.id DESC
+                    LIMIT 1
+                )
+            ) keepers
         )
     """))
 

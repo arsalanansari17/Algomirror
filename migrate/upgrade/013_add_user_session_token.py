@@ -42,5 +42,10 @@ def upgrade(db):
 
 
 def downgrade(db):
-    """Remove session_token column (SQLite doesn't support DROP COLUMN easily)"""
-    pass
+    """Remove session_token column from users table"""
+    try:
+        db.session.execute(text("ALTER TABLE users DROP COLUMN session_token"))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Could not drop session_token column (needs SQLite 3.35+/PostgreSQL): {e}")
