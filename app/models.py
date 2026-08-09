@@ -69,6 +69,14 @@ class User(UserMixin, db.Model):
         return self.accounts.filter_by(is_active=True, is_primary=True).first()
 
     def get_id(self):
+        # Self-heal a missing token (row inserted outside the ORM default,
+        # or this code deployed before the 007/013 migration backfilled it)
+        # rather than embed "None" in the session id - load_user() would
+        # then reject every request for this user, including a fresh login,
+        # since a freshly-issued session carries the same broken id.
+        if not self.session_token:
+            self.session_token = secrets.token_hex(16)
+            db.session.commit()
         return f'{self.id}:{self.session_token}'
 
     def __repr__(self):
@@ -931,13 +939,23 @@ class RiskEvent(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     # user_id is "{id}:{session_token}" (see User.get_id()) - a mismatched
-    # or missing token means the password was reset since this session/
-    # remember-me cookie was issued, so treat it as logged out.
+    # token means the password was reset since this session/remember-me
+    # cookie was issued, so treat it as logged out.
     try:
         raw_id, token = user_id.split(':', 1)
         user = User.query.get(int(raw_id))
     except (ValueError, TypeError):
         return None
-    if not user or not token or user.session_token != token:
+    if not user:
+        return None
+    if not user.session_token:
+        # Row predates the session_token migration/backfill, or was
+        # inserted outside the ORM default - self-heal via get_id() rather
+        # than reject, or this user could never authenticate again (a
+        # fresh login embeds this same "None" token and hits the same
+        # rejection).
+        user.get_id()
+        return user
+    if user.session_token != token:
         return None
     return user

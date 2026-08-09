@@ -432,15 +432,19 @@ class MarginCalculator:
                 from app import db
                 if not tracker:
                     tracker = MarginTracker(account_id=account.id)
-                    db.session.add(tracker)
                     try:
                         # account_id is unique - a concurrent caller (e.g. the
                         # margin tracker page loading at the same moment) may
-                        # have already created this account's row.
-                        db.session.flush()
+                        # have already created this account's row. Scoped to
+                        # a SAVEPOINT so only this insert rolls back on
+                        # conflict - a plain session-wide rollback would also
+                        # discard whatever unrelated pending changes the
+                        # caller's transaction already had.
+                        with db.session.begin_nested():
+                            db.session.add(tracker)
+                            db.session.flush()
                         logger.debug(f"[MARGIN DEBUG] Created new MarginTracker for account {account.id}")
                     except IntegrityError:
-                        db.session.rollback()
                         tracker = MarginTracker.query.filter_by(account_id=account.id).first()
 
                 tracker.update_margins(funds_data)
