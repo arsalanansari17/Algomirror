@@ -505,6 +505,11 @@
                             <div class="stat-value text-2xl" id="open-option-qty-value">--</div>
                             <div class="stat-desc">CE/PE itemized by Buy/Sell (open only)</div>
                         </div>
+                        <div class="stat" id="open-combined-premium-stat" style="display: none;">
+                            <div class="stat-title">Combined Premium</div>
+                            <div class="stat-value text-2xl" id="open-combined-premium-value">--</div>
+                            <div class="stat-desc">Captured at entry (points)</div>
+                        </div>
                         {% endif %}
                     </div>
                 </div>
@@ -3245,12 +3250,12 @@ async function fetchCombinedPremium() {
 
             // Get the latest data point
             const latestData = result.data[result.data.length - 1];
-            const combinedPremium = latestData.close;
             const supertrendValue = latestData.supertrend;
             const direction = latestData.direction; // 1 = bullish (BUY), -1 = bearish (SELL)
 
             // Update connection status
             if (connectionEl) {
+                connectionEl.title = '';
                 if (allPositionsClosed) {
                     connectionEl.innerHTML = 'Closed';
                     connectionEl.className = 'badge badge-sm badge-warning';
@@ -3260,8 +3265,11 @@ async function fetchCombinedPremium() {
                 }
             }
 
-            // Update combined premium
-            premiumEl.textContent = combinedPremium !== null ? combinedPremium.toFixed(2) : '--';
+            // Note: the Combined Premium number itself is intentionally NOT set here.
+            // chart-data only returns closed candles, so on a 10m timeframe this value
+            // would only change once every 10 minutes. loadPositions() (every 5s) drives
+            // riskCombinedPremium live instead, using real LTP. Supertrend/Signal below
+            // remain candle-bound, since that's how the indicator is actually computed.
 
             // Update supertrend value
             if (supertrendValueEl) {
@@ -3288,15 +3296,17 @@ async function fetchCombinedPremium() {
                 }
             }
         } else {
-            throw new Error('No data received');
+            throw new Error(result.message || 'No data received');
         }
     } catch (error) {
-        console.error('Error fetching combined premium:', error);
+        console.error('[Supertrend] Combined premium fetch failed:', error.message);
 
-        // Update connection status to offline
+        // Update connection status to offline - surface the actual reason via
+        // tooltip since the badge itself has no room for the message
         if (connectionEl) {
             connectionEl.innerHTML = 'Offline';
             connectionEl.className = 'badge badge-sm badge-error';
+            connectionEl.title = error.message || 'Unknown error';
         }
     }
 }
@@ -3439,6 +3449,15 @@ async function loadPositions(strategyId) {
             // Itemized CE/PE quantity totals for OPEN positions, split by Buy/Sell
             const openOptionQty = { CE: { BUY: 0, SELL: 0 }, PE: { BUY: 0, SELL: 0 } };
 
+            // Per-leg entry price aggregation for Combined Premium (points), keyed by leg_number.
+            // Uses entry price only (never LTP), so the value is static until legs open/close.
+            const legPremiumAgg = {};
+
+            // Per-leg LTP aggregation for the Risk Status card's live Combined Premium
+            // (Supertrend card). Uses live LTP, not the last closed candle from chart-data,
+            // so it actually ticks every 5s instead of only on candle close (10m+).
+            const legLtpAgg = {};
+
             if (positions.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="11" class="text-center text-base-content/60">No positions</td></tr>';
 
@@ -3525,6 +3544,26 @@ async function loadPositions(strategyId) {
                         openOptionQty[instrumentType][action] += Math.abs(qty);
                     }
 
+                    // Accumulate entry price per leg for Combined Premium (points) - averaged
+                    // across accounts holding the same leg, using entry price (static, not LTP)
+                    if (isOpenPosition && position.leg_number != null) {
+                        const legNum = position.leg_number;
+                        const entryPrice = parseFloat(position.average_price) || 0;
+                        if (!legPremiumAgg[legNum]) {
+                            legPremiumAgg[legNum] = { action, totalPrice: 0, count: 0 };
+                        }
+                        legPremiumAgg[legNum].totalPrice += entryPrice;
+                        legPremiumAgg[legNum].count += 1;
+
+                        // Same aggregation, but with live LTP for the Risk Status card
+                        const ltp = parseFloat(position.ltp) || 0;
+                        if (!legLtpAgg[legNum]) {
+                            legLtpAgg[legNum] = { action, totalLtp: 0, count: 0 };
+                        }
+                        legLtpAgg[legNum].totalLtp += ltp;
+                        legLtpAgg[legNum].count += 1;
+                    }
+
                     row.innerHTML = `
                         <td><span class="badge badge-outline badge-sm">${position.account_name || 'N/A'}</span></td>
                         <td><span class="badge badge-primary badge-sm">${position.leg_number || '-'}</span></td>
@@ -3591,6 +3630,50 @@ async function loadPositions(strategyId) {
                     document.getElementById('open-option-qty-value').innerHTML = items.join('');
                 } else {
                     optionQtyStat.style.display = 'none';
+                }
+            }
+
+            // Update Combined Premium in points - one entry price per leg (averaged across
+            // accounts), SELL adds / BUY subtracts. Static per leg since it uses entry price,
+            // not LTP; recalculated only when the set of open legs changes (open/close).
+            const combinedPremiumStat = document.getElementById('open-combined-premium-stat');
+            if (combinedPremiumStat) {
+                const legNums = Object.keys(legPremiumAgg);
+                if (legNums.length > 0) {
+                    combinedPremiumStat.style.display = '';
+                    const valueEl = document.getElementById('open-combined-premium-value');
+                    if (valueEl) {
+                        let combinedPremiumPoints = 0;
+                        legNums.forEach(legNum => {
+                            const leg = legPremiumAgg[legNum];
+                            const avgPrice = leg.totalPrice / leg.count;
+                            combinedPremiumPoints += avgPrice * (leg.action === 'SELL' ? 1 : -1);
+                        });
+                        valueEl.textContent = combinedPremiumPoints.toFixed(2);
+                        valueEl.className = `stat-value text-2xl ${combinedPremiumPoints >= 0 ? 'text-success' : 'text-warning'}`;
+                    }
+                } else {
+                    combinedPremiumStat.style.display = 'none';
+                }
+            }
+
+            // Update Risk Status card's Combined Premium with LIVE LTP (not the last closed
+            // candle from chart-data, which only changes once per candle - e.g. every 10m).
+            // Supertrend value and Signal are left to fetchCombinedPremium(), since those are
+            // legitimately candle-bound. This one just needs to tick with the market.
+            const riskPremiumEl = document.getElementById('riskCombinedPremium');
+            if (riskPremiumEl) {
+                const ltpLegNums = Object.keys(legLtpAgg);
+                if (ltpLegNums.length > 0) {
+                    let combinedPremiumLive = 0;
+                    ltpLegNums.forEach(legNum => {
+                        const leg = legLtpAgg[legNum];
+                        const avgLtp = leg.totalLtp / leg.count;
+                        combinedPremiumLive += avgLtp * (leg.action === 'SELL' ? 1 : -1);
+                    });
+                    riskPremiumEl.textContent = combinedPremiumLive.toFixed(2);
+                } else {
+                    riskPremiumEl.textContent = '--';
                 }
             }
 

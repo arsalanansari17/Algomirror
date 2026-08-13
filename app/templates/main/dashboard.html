@@ -806,7 +806,7 @@ function startPolling() {
     loadStrategyPnL();
 
     pollingIntervals.metrics = setInterval(loadStrategyMetrics, 10000);  // 10 seconds
-    pollingIntervals.funds = setInterval(loadAccountFunds, 15000);       // 15 seconds (funds + M2M P&L combined)
+    pollingIntervals.funds = setInterval(loadAccountFunds, 15000);       // 15 seconds (funds + M2M P&L combined, incl. mode badge)
     pollingIntervals.pnl = setInterval(loadStrategyPnL, 10000);          // 10 seconds
 }
 
