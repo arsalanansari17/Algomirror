@@ -234,6 +234,61 @@ def get_account_funds(account_id):
             'message': f'Failed to get funds: {str(e)}'
         }, 500)
 
+@api_bp.route('/accounts/<int:account_id>/mode')
+@login_required
+@api_rate_limit()
+def get_account_mode(account_id):
+    """Get whether an account's OpenAlgo instance is in Live or Analyze (sandbox) mode."""
+    try:
+        from app.utils.openalgo_client import ExtendedOpenAlgoAPI
+
+        # Verify account belongs to current user
+        account = TradingAccount.query.filter_by(
+            id=account_id,
+            user_id=current_user.id,
+            is_active=True
+        ).first()
+
+        if not account:
+            return jsonify({
+                'status': 'error',
+                'message': 'Account not found'
+            }), 404
+
+        client = ExtendedOpenAlgoAPI(
+            api_key=account.get_api_key(),
+            host=account.host_url,
+            timeout=8
+        )
+
+        response = None
+        try:
+            response = client.analyzerstatus()
+        except Exception:
+            response = None
+
+        if response and response.get('status') == 'success':
+            mode_data = response.get('data', {})
+            return no_cache_response({
+                'status': 'success',
+                'data': {
+                    'account_id': account.id,
+                    'mode': mode_data.get('mode', 'live'),
+                    'analyze_mode': bool(mode_data.get('analyze_mode', False))
+                }
+            })
+
+        return no_cache_response({
+            'status': 'error',
+            'message': (response or {}).get('message', 'Failed to fetch analyzer status')
+        }, 500)
+
+    except Exception as e:
+        return no_cache_response({
+            'status': 'error',
+            'message': f'Failed to get mode: {str(e)}'
+        }, 500)
+
 @api_bp.route('/accounts/<int:account_id>/pnl')
 @login_required
 @api_rate_limit()
