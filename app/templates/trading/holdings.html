@@ -775,7 +775,7 @@ function renderMergedView() {
         }
 
         const acctCell = merged.querySelector('.account-cell');
-        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium">${accountNames.join(', ')}</div>`;
+        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium" data-pv="account">${accountNames.join(', ')}</div>`;
 
         // A merged row spans more than one account, so there's no single
         // (account, symbol) left to tag - replace the clickable trigger with
