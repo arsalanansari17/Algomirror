@@ -684,3 +684,22 @@
 [data-theme="dark"] .link-primary:hover {
   text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
 }
+
+/* Privacy Mode - blurs sensitive values before a screenshot.
+   `.privacy-active` is the client-side on/off switch (navbar toggle,
+   localStorage-persisted). `data-privacy-fields` on <html> is the
+   server-configured set of categories (Admin > Platform Settings) that
+   are candidates for masking at all - only categories present in both
+   get blurred. LTP is deliberately never tagged with data-pv anywhere,
+   so it's never a candidate regardless of settings.
+   Uses `filter: blur()` rather than replacing text content so live price
+   polling/WebSocket updates keep working invisibly underneath the blur,
+   and un-toggling reveals current values instantly with no re-fetch. */
+html.privacy-active[data-privacy-fields~="account"] [data-pv="account"],
+html.privacy-active[data-privacy-fields~="qty"] [data-pv="qty"],
+html.privacy-active[data-privacy-fields~="avgprice"] [data-pv="avgprice"],
+html.privacy-active[data-privacy-fields~="pnl"] [data-pv="pnl"],
+html.privacy-active[data-privacy-fields~="value"] [data-pv="value"] {
+  filter: blur(6px);
+  user-select: none;
+}

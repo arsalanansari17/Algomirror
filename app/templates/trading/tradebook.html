@@ -105,7 +105,7 @@
                             <td>
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(trade.account_id, trade.account_name + ' · ' + trade.broker) }}
-                                    <div>
+                                    <div data-pv="account">
                                         <div class="text-xs font-medium">{{ trade.account_name }}</div>
                                         <div class="text-xs opacity-50">{{ trade.broker }}</div>
                                     </div>
@@ -120,9 +120,9 @@
                                 </span>
                             </td>
                             <td>{{ trade.product }}</td>
-                            <td class="font-mono">{{ trade.quantity }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format(trade.average_price|float) if trade.average_price else "0.00" }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format(trade.trade_value|float) if trade.trade_value else "0.00" }}</td>
+                            <td class="font-mono" data-pv="qty">{{ trade.quantity }}</td>
+                            <td class="font-mono" data-pv="avgprice">₹{{ "%.2f"|format(trade.average_price|float) if trade.average_price else "0.00" }}</td>
+                            <td class="font-mono" data-pv="value">₹{{ "%.2f"|format(trade.trade_value|float) if trade.trade_value else "0.00" }}</td>
                             <td class="font-mono text-xs">{{ trade.orderid }}</td>
                         </tr>
                         {% endfor %}

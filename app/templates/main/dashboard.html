@@ -85,7 +85,7 @@
                 </svg>
             </div>
             <div class="stat-title">Available Margin</div>
-            <div class="stat-value text-secondary text-2xl lg:text-4xl" id="total-available-margin">
+            <div class="stat-value text-secondary text-2xl lg:text-4xl" id="total-available-margin" data-pv="value">
                 <span class="loading loading-spinner loading-md"></span>
             </div>
             <div class="stat-desc">Cash + Collateral</div>
@@ -98,7 +98,7 @@
                 </svg>
             </div>
             <div class="stat-title">Account M2M P&L</div>
-            <div class="stat-value text-2xl lg:text-4xl" id="total-m2m-pnl">
+            <div class="stat-value text-2xl lg:text-4xl" id="total-m2m-pnl" data-pv="pnl">
                 <span class="loading loading-spinner loading-md"></span>
             </div>
             <div class="stat-desc">Broker reported P&L</div>
@@ -112,7 +112,7 @@
                 </svg>
             </div>
             <div class="stat-title">Strategy P&L</div>
-            <div class="stat-value text-2xl lg:text-4xl" id="total-strategy-pnl">
+            <div class="stat-value text-2xl lg:text-4xl" id="total-strategy-pnl" data-pv="pnl">
                 <span class="loading loading-spinner loading-md"></span>
             </div>
             <div class="stat-desc">AlgoMirror tracked P&L</div>
@@ -137,7 +137,7 @@
         <div class="card bg-base-100 shadow-lg" id="account-card-{{ account.id }}">
             <div class="card-body">
                 <div class="flex justify-between items-start mb-2">
-                    <div>
+                    <div data-pv="account">
                         <h3 class="font-semibold text-lg">{{ account.account_name }}</h3>
                         <p class="text-sm text-base-content/60">{{ account.broker_name }}</p>
                     </div>
@@ -161,19 +161,19 @@
                             Available Margin
                             <span class="block text-[10px] text-base-content/50">(Cash + Collateral)</span>
                         </span>
-                        <span class="font-semibold" id="available-{{ account.id }}">
+                        <span class="font-semibold" id="available-{{ account.id }}" data-pv="value">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm">Used Margin:</span>
-                        <span class="font-semibold" id="margin-{{ account.id }}">
+                        <span class="font-semibold" id="margin-{{ account.id }}" data-pv="value">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm">Available Cash:</span>
-                        <span class="font-semibold" id="cash-{{ account.id }}">
+                        <span class="font-semibold" id="cash-{{ account.id }}" data-pv="value">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
                     </div>
@@ -210,7 +210,7 @@
                 <!-- Today's P&L -->
                 <div class="flex justify-between items-center pt-3 border-t">
                     <span class="text-sm">Today's P&L</span>
-                    <span class="font-bold" id="pnl-account-{{ account.id }}">
+                    <span class="font-bold" id="pnl-account-{{ account.id }}" data-pv="pnl">
                         <span class="loading loading-spinner loading-xs"></span>
                     </span>
                 </div>
@@ -280,7 +280,7 @@
                                 <span class="badge badge-outline badge-sm" id="positions-{{ strategy.id }}">0</span>
                             </td>
                             <td>
-                                <span class="font-semibold" id="pnl-{{ strategy.id }}">₹0</span>
+                                <span class="font-semibold" id="pnl-{{ strategy.id }}" data-pv="pnl">₹0</span>
                             </td>
                             <td>
                                 {% if strategy.is_active %}

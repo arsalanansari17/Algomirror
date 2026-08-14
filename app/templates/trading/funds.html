@@ -52,27 +52,27 @@
 
         <div class="stat">
             <div class="stat-title">Total Available Cash</div>
-            <div class="stat-value text-primary">₹{{ format_lakhs(total_available) }}</div>
+            <div class="stat-value text-primary" data-pv="value">₹{{ format_lakhs(total_available) }}</div>
             <div class="stat-desc">Across {{ funds_data|length }} accounts</div>
         </div>
 
         <div class="stat">
             <div class="stat-title">M2M Realized</div>
-            <div class="stat-value {{ 'text-success' if total_m2m_realized >= 0 else 'text-error' }}">
+            <div class="stat-value {{ 'text-success' if total_m2m_realized >= 0 else 'text-error' }}" data-pv="pnl">
                 ₹{{ "%.2f"|format(total_m2m_realized) }}
             </div>
         </div>
 
         <div class="stat">
             <div class="stat-title">M2M Unrealized</div>
-            <div class="stat-value {{ 'text-success' if total_m2m_unrealized >= 0 else 'text-error' }}">
+            <div class="stat-value {{ 'text-success' if total_m2m_unrealized >= 0 else 'text-error' }}" data-pv="pnl">
                 ₹{{ "%.2f"|format(total_m2m_unrealized) }}
             </div>
         </div>
 
         <div class="stat">
             <div class="stat-title">Used Debits</div>
-            <div class="stat-value text-warning">₹{{ format_lakhs(total_used_debits) }}</div>
+            <div class="stat-value text-warning" data-pv="value">₹{{ format_lakhs(total_used_debits) }}</div>
         </div>
     </div>
     {% endif %}
@@ -85,7 +85,7 @@
                 <div class="flex justify-between items-start">
                     <div class="flex items-center gap-3">
                         {{ account_dot(fund.account_id, fund.account_name + ' · ' + fund.broker) }}
-                        <div>
+                        <div data-pv="account">
                             <h2 class="card-title">{{ fund.account_name }}</h2>
                             <p class="text-sm opacity-70">{{ fund.broker }}</p>
                         </div>
@@ -104,33 +104,33 @@
                 <!-- Available Cash -->
                 <div class="stat {{ 'bg-transparent p-0' if single_account else 'bg-base-200' }}">
                     <div class="stat-title {{ 'text-base' if single_account }}">Available Cash</div>
-                    <div class="stat-value text-primary {{ 'text-2xl' if single_account }}">
+                    <div class="stat-value text-primary {{ 'text-2xl' if single_account }}" data-pv="value">
                         ₹{{ format_lakhs(fund.availablecash|float) }}
                     </div>
                 </div>
-                
+
                 <!-- P&L Section -->
                 <div class="grid grid-cols-2 gap-4 mt-4">
                     <div class="stat bg-base-200">
                         <div class="stat-title">Realized P&L</div>
-                        <div class="stat-value {{ 'text-success' if fund.m2mrealized|float >= 0 else 'text-error' }} text-lg">
+                        <div class="stat-value {{ 'text-success' if fund.m2mrealized|float >= 0 else 'text-error' }} text-lg" data-pv="pnl">
                             ₹{{ "%.2f"|format(fund.m2mrealized|float) }}
                         </div>
                     </div>
-                    
+
                     <div class="stat bg-base-200">
                         <div class="stat-title">Unrealized P&L</div>
-                        <div class="stat-value {{ 'text-success' if fund.m2munrealized|float >= 0 else 'text-error' }} text-lg">
+                        <div class="stat-value {{ 'text-success' if fund.m2munrealized|float >= 0 else 'text-error' }} text-lg" data-pv="pnl">
                             ₹{{ "%.2f"|format(fund.m2munrealized|float) }}
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Used Debits -->
                 {% if fund.utiliseddebits and fund.utiliseddebits|float > 0 %}
                 <div class="stat bg-base-200 mt-4">
                     <div class="stat-title">Used Debits</div>
-                    <div class="stat-value text-warning text-lg">
+                    <div class="stat-value text-warning text-lg" data-pv="value">
                         ₹{{ format_lakhs(fund.utiliseddebits|float) }}
                     </div>
                 </div>
@@ -141,7 +141,7 @@
                 <div class="divider"></div>
                 <div class="flex justify-between items-center">
                     <span class="font-semibold">Total P&L:</span>
-                    <span class="font-bold text-lg {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+                    <span class="font-bold text-lg {{ 'text-success' if total_pnl >= 0 else 'text-error' }}" data-pv="pnl">
                         ₹{{ "%.2f"|format(total_pnl) }}
                     </span>
                 </div>

@@ -48,6 +48,21 @@ def update_settings():
     app_settings = AppSettings.get()
     was_enabled = app_settings.strategy_engine_enabled
     app_settings.strategy_engine_enabled = 'strategy_engine_enabled' in request.form
+
+    privacy_fields = [
+        'privacy_hide_account_name',
+        'privacy_hide_quantity',
+        'privacy_hide_avg_price',
+        'privacy_hide_pnl',
+        'privacy_hide_value',
+    ]
+    privacy_changed = False
+    for field in privacy_fields:
+        new_value = field in request.form
+        if getattr(app_settings, field) != new_value:
+            privacy_changed = True
+        setattr(app_settings, field, new_value)
+
     db.session.commit()
 
     if was_enabled != app_settings.strategy_engine_enabled:
@@ -58,5 +73,10 @@ def update_settings():
         # Supertrend Exit, Order Poller) are only started/stopped at app
         # startup, so restart the service for that part to take effect.
         flash(f'Strategy engine {state}. Restart the AlgoMirror service for background-service changes to take effect.', 'success')
+    elif privacy_changed:
+        log_activity('platform_settings_update', 'Privacy Mode categories updated')
+        flash('Privacy Mode settings saved.', 'success')
+    else:
+        flash('No changes to save.', 'info')
 
     return redirect(url_for('admin.settings'))
