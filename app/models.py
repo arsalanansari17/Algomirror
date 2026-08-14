@@ -667,11 +667,12 @@ class AppSettings(db.Model):
     Manager, Supertrend Exit, Order Poller, and the broker-position
     reconciliation banner) without touching code.
 
-    The privacy_hide_* fields configure Privacy Mode: which categories of
-    sensitive data get blurred when the navbar privacy toggle is switched
-    on. Account name, quantity, average price, P&L, and value can each be
-    included or excluded independently - LTP is never a candidate, since
-    it's public market data rather than personal exposure.
+    The privacy_hide_* fields are Privacy Mode: each one blurs that
+    category of sensitive data everywhere it's shown, the moment it's
+    saved - no separate on/off switch. Account name, quantity, average
+    price, P&L, and value can each be toggled independently - LTP is
+    never a candidate, since it's public market data rather than personal
+    exposure.
     """
     __tablename__ = 'app_settings'
 
@@ -696,7 +697,7 @@ class AppSettings(db.Model):
 
     def privacy_fields_string(self):
         """Space-separated list of categories Privacy Mode is configured to
-        hide, for direct use in the <body data-privacy-fields="..."> attribute
+        hide, for direct use in the <html data-privacy-fields="..."> attribute
         the CSS masking rules key off of."""
         fields = []
         if self.privacy_hide_account_name:

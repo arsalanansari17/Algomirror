@@ -11,12 +11,6 @@
             // Set theme immediately before any content renders
             var savedTheme = localStorage.getItem('theme') || 'dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
-            // Restore Privacy Mode's on/off state before paint too, same
-            // reasoning as theme - otherwise a reload with it left on would
-            // flash the real values for a moment before JS catches up.
-            if (localStorage.getItem('algomirror_privacy_mode_on') === 'true') {
-                document.documentElement.classList.add('privacy-active');
-            }
             // Make page visible now that theme is set
             document.documentElement.classList.remove('theme-loading');
             document.documentElement.classList.add('theme-ready');

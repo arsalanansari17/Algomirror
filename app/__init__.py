@@ -269,9 +269,9 @@ def create_app(config_name=None, start_background_services=True):
     # Context processor for Privacy Mode's configured categories (not cached,
     # same reasoning as above - admin can change this via Platform Settings
     # at any time). privacy_fields_string feeds directly into
-    # <body data-privacy-fields="..."> so the CSS masking rules know which
-    # categories are currently maskable; the navbar toggle then switches
-    # masking on/off client-side within whatever's listed here.
+    # <html data-privacy-fields="..."> so the CSS masking rules blur exactly
+    # the categories currently checked - no separate on/off switch, each
+    # checkbox takes effect the moment it's saved.
     @app.context_processor
     def inject_privacy_settings():
         from flask_login import current_user
