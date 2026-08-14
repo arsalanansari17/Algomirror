@@ -121,8 +121,8 @@
     <div class="toast toast-top toast-end z-50"></div>
     
     <!-- Scripts -->
-    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/navbar.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}?v={{ asset_version('js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/navbar.js') }}?v={{ asset_version('js/navbar.js') }}"></script>
     
     <script>
         function showToast(message, type = 'info') {
