@@ -81,28 +81,28 @@
     <div class="stats shadow w-full">
         <div class="stat">
             <div class="stat-title">Invested</div>
-            <div id="statInvested" class="stat-value text-primary">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
+            <div id="statInvested" data-pv="value" class="stat-value text-primary">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
         </div>
 
         <div class="stat">
             <div class="stat-title">Current</div>
-            <div id="statCurrent" class="stat-value text-info">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
+            <div id="statCurrent" data-pv="value" class="stat-value text-info">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
         </div>
 
         <div class="stat {{ 'hidden' if statistics.totaldaypnl is not defined }}" id="statDayPnlWrap">
             <div class="stat-title">Day's P&L</div>
-            <div id="statDayPnl" class="stat-value {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
+            <div id="statDayPnl" data-pv="pnl" class="stat-value {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(statistics.totaldaypnl) if statistics.totaldaypnl is defined else "0.00" }}
             </div>
-            <div id="statDayPnlPct" class="stat-desc">{{ "+" if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) if statistics.totaldaypnlpercentage is defined else "0.00" }}%</div>
+            <div id="statDayPnlPct" data-pv="pnl" class="stat-desc">{{ "+" if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) if statistics.totaldaypnlpercentage is defined else "0.00" }}%</div>
         </div>
 
         <div class="stat">
             <div class="stat-title">Total P&L</div>
-            <div id="statTotalPnl" class="stat-value {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
+            <div id="statTotalPnl" data-pv="pnl" class="stat-value {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
             </div>
-            <div id="statTotalPnlPct" class="stat-desc">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
+            <div id="statTotalPnlPct" data-pv="pnl" class="stat-desc">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
         </div>
     </div>
 
@@ -172,7 +172,7 @@
                             <td class="account-cell">
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(holding.account_id, holding.account_name + ' · ' + holding.broker) }}
-                                    <div>
+                                    <div data-pv="account">
                                         <div class="text-xs font-medium account-name-text">{{ holding.account_name }}</div>
                                         <div class="text-xs opacity-50">{{ holding.broker }}</div>
                                     </div>
@@ -197,21 +197,21 @@
                                     </button>
                                 </div>
                             </td>
-                            <td class="qty-cell font-mono text-right">
+                            <td class="qty-cell font-mono text-right" data-pv="qty">
                                 <span class="qty-badges">
                                     {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: {{ t1|int }}</span>{% endif %}
                                     {% if pledged > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">P: {{ pledged|int }}</span>{% endif %}
                                 </span>
                                 <span class="qty-value">{{ holding.quantity }}</span>
                             </td>
-                            <td class="avgprice-cell font-mono text-right">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
+                            <td class="avgprice-cell font-mono text-right" data-pv="avgprice">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
                             <td class="ltp-cell font-mono text-right">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
-                            <td class="invested-cell font-mono text-right">₹{{ "%.2f"|format(holding.invested) }}</td>
-                            <td class="current-cell font-mono text-right">₹{{ "%.2f"|format(holding.current) }}</td>
-                            <td class="pnl-cell font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}">
+                            <td class="invested-cell font-mono text-right" data-pv="value">₹{{ "%.2f"|format(holding.invested) }}</td>
+                            <td class="current-cell font-mono text-right" data-pv="value">₹{{ "%.2f"|format(holding.current) }}</td>
+                            <td class="pnl-cell font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 ₹{{ "%.2f"|format(holding.pnl|float) if holding.pnl else "0.00" }}
                             </td>
-                            <td class="pnlpercent-cell text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}">
+                            <td class="pnlpercent-cell text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 {{ "%.2f"|format(holding.pnlpercent|float) if holding.pnlpercent else "0.00" }}%
                             </td>
                             <td class="daychg-cell text-right {{ 'text-success' if holding.day_change_percent is defined and holding.day_change_percent >= 0 else 'text-error' if holding.day_change_percent is defined else 'text-base-content/50' }}">
@@ -226,12 +226,12 @@
                             <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
                             <td></td>
                             <td></td>
-                            <td id="footInvested" class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
-                            <td id="footCurrent" class="font-mono text-right">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</td>
-                            <td id="footPnl" class="font-mono text-right {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
+                            <td id="footInvested" class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
+                            <td id="footCurrent" class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</td>
+                            <td id="footPnl" class="font-mono text-right {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}" data-pv="pnl">
                                 ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
                             </td>
-                            <td id="footPnlPct" class="text-right {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}">
+                            <td id="footPnlPct" class="text-right {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}" data-pv="pnl">
                                 {{ "%.2f"|format(statistics.totalpnlpercentage) }}%
                             </td>
                             <td id="footDayPnlPct" class="text-right {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' if statistics.totaldaypnlpercentage is defined else 'text-base-content/50' }}">
@@ -774,7 +774,7 @@ function renderMergedView() {
         }
 
         const acctCell = merged.querySelector('.account-cell');
-        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium">${accountNames.join(', ')}</div>`;
+        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium" data-pv="account">${accountNames.join(', ')}</div>`;
 
         // A merged row spans more than one account, so there's no single
         // (account, symbol) left to tag - replace the clickable trigger with

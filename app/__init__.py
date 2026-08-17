@@ -266,6 +266,20 @@ def create_app(config_name=None, start_background_services=True):
         from app.models import AppSettings
         return dict(strategy_engine_enabled=AppSettings.get().strategy_engine_enabled)
 
+    # Context processor for Privacy Mode's configured categories (not cached,
+    # same reasoning as above - admin can change this via Platform Settings
+    # at any time). privacy_fields_string feeds directly into
+    # <html data-privacy-fields="..."> so the CSS masking rules blur exactly
+    # the categories currently checked - no separate on/off switch, each
+    # checkbox takes effect the moment it's saved.
+    @app.context_processor
+    def inject_privacy_settings():
+        from flask_login import current_user
+        if not current_user.is_authenticated:
+            return dict(privacy_fields_string='')
+        from app.models import AppSettings
+        return dict(privacy_fields_string=AppSettings.get().privacy_fields_string())
+
     # Cache-busting for static assets. nginx serves /static/ with
     # `Cache-Control: public, max-age=2592000, immutable` (30 days) for
     # performance, which means browsers never even re-check compiled.css

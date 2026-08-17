@@ -107,7 +107,7 @@
                             <td>
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(order.account_id, order.account_name + ' · ' + order.broker) }}
-                                    <div>
+                                    <div data-pv="account">
                                         <div class="text-xs font-medium">{{ order.account_name }}</div>
                                         <div class="text-xs opacity-50">{{ order.broker }}</div>
                                     </div>
@@ -123,8 +123,8 @@
                             </td>
                             <td>{{ order.pricetype }}</td>
                             <td>{{ order.product }}</td>
-                            <td class="font-mono">{{ order.quantity }}</td>
-                            <td class="font-mono">₹{{ "%.2f"|format(order.price|float) }}</td>
+                            <td class="font-mono" data-pv="qty">{{ order.quantity }}</td>
+                            <td class="font-mono" data-pv="value">₹{{ "%.2f"|format(order.price|float) }}</td>
                             <td>
                                 {% set status_class = 'badge-success' if order.order_status == 'complete' else 'badge-warning' if order.order_status in ['open', 'pending'] else 'badge-error' if order.order_status == 'rejected' else 'badge-ghost' %}
                                 <span class="badge {{ status_class }} badge-sm">

@@ -63,7 +63,7 @@
                 <!-- Account Header -->
                 <div class="mb-6 pb-6 border-b border-base-300">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-3" data-pv="account">
                             <h2 class="text-2xl font-bold">{{ account.account_name }}</h2>
                             <span class="badge badge-success">{{ account.broker_name }}</span>
                         </div>
@@ -97,7 +97,7 @@
                                 </svg>
                                 <span class="text-sm text-base-content/60">Total P&L</span>
                             </div>
-                            <div class="text-2xl font-bold {% if account.total_unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}">
+                            <div class="text-2xl font-bold {% if account.total_unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}" data-pv="pnl">
                                 {% if account.total_unrealized_pnl >= 0 %}+{% endif %}₹{{ "%.2f"|format(account.total_unrealized_pnl) }}
                             </div>
                         </div>
@@ -150,7 +150,7 @@
                                     </div>
                                     <div class="bg-base-100 rounded-lg p-3">
                                         <div class="text-xs text-base-content/60 mb-1">P&L</div>
-                                        <div class="text-xl font-bold {% if strategy.total_pnl >= 0 %}text-success{% else %}text-error{% endif %}">
+                                        <div class="text-xl font-bold {% if strategy.total_pnl >= 0 %}text-success{% else %}text-error{% endif %}" data-pv="pnl">
                                             {% if strategy.total_pnl >= 0 %}+{% endif %}₹{{ "%.2f"|format(strategy.total_pnl) }}
                                         </div>
                                     </div>
@@ -167,8 +167,8 @@
                                             <span class="badge badge-outline badge-xs">{{ execution.exchange }}</span>
                                         </div>
                                         <div class="flex justify-between text-xs text-base-content/70 mb-2">
-                                            <span>Qty: {{ execution.quantity }}</span>
-                                            <span>Entry: ₹{{ "%.2f"|format(execution.entry_price) }}</span>
+                                            <span data-pv="qty">Qty: {{ execution.quantity }}</span>
+                                            <span data-pv="avgprice">Entry: ₹{{ "%.2f"|format(execution.entry_price) }}</span>
                                         </div>
                                         <div class="flex justify-between items-center">
                                             <span class="text-xs text-base-content/60">
@@ -178,7 +178,7 @@
                                                 -
                                                 {% endif %}
                                             </span>
-                                            <span class="font-semibold text-sm {% if execution.unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}">
+                                            <span class="font-semibold text-sm {% if execution.unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}" data-pv="pnl">
                                                 {% if execution.unrealized_pnl >= 0 %}+{% endif %}₹{{ "%.2f"|format(execution.unrealized_pnl) }}
                                             </span>
                                         </div>
@@ -238,7 +238,7 @@
                 </div>
                 <div class="stat bg-base-200 rounded-lg p-4">
                     <div class="stat-title">Total P&L</div>
-                    <div class="stat-value text-2xl {% if strategy.total_pnl >= 0 %}text-success{% else %}text-error{% endif %}">
+                    <div class="stat-value text-2xl {% if strategy.total_pnl >= 0 %}text-success{% else %}text-error{% endif %}" data-pv="pnl">
                         {% if strategy.total_pnl >= 0 %}+{% endif %}₹{{ "%.2f"|format(strategy.total_pnl) }}
                     </div>
                 </div>
@@ -280,8 +280,8 @@
                             <td class="font-mono whitespace-nowrap">{{ execution.symbol }}</td>
                             <td class="whitespace-nowrap"><span class="badge {{ type_badge_class }} badge-sm">{{ instrument_type }}</span></td>
                             <td class="whitespace-nowrap"><span class="badge {{ action_badge_class }} badge-sm">{{ action }}</span></td>
-                            <td class="text-right whitespace-nowrap">{{ execution.quantity }}</td>
-                            <td class="text-right whitespace-nowrap">₹{{ "%.2f"|format(execution.entry_price) }}</td>
+                            <td class="text-right whitespace-nowrap" data-pv="qty">{{ execution.quantity }}</td>
+                            <td class="text-right whitespace-nowrap" data-pv="avgprice">₹{{ "%.2f"|format(execution.entry_price) }}</td>
                             <td class="whitespace-nowrap">
                                 {% if execution.entry_time_formatted %}
                                 {{ execution.entry_time_formatted }}
@@ -289,7 +289,7 @@
                                 -
                                 {% endif %}
                             </td>
-                            <td class="text-right font-bold whitespace-nowrap {% if execution.unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}">
+                            <td class="text-right font-bold whitespace-nowrap {% if execution.unrealized_pnl >= 0 %}text-success{% else %}text-error{% endif %}" data-pv="pnl">
                                 {% if execution.unrealized_pnl >= 0 %}+{% endif %}₹{{ "%.2f"|format(execution.unrealized_pnl) }}
                             </td>
                         </tr>

@@ -684,3 +684,20 @@
 [data-theme="dark"] .link-primary:hover {
   text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
 }
+
+/* Privacy Mode - blurs sensitive values before a screenshot.
+   `data-privacy-fields` on <html> is the server-configured set of
+   categories (Admin > Platform Settings) currently set to hide - each
+   checkbox takes effect the moment it's saved, no separate on/off switch.
+   LTP is deliberately never tagged with data-pv anywhere, so it's never a
+   candidate regardless of settings.
+   Uses `filter: blur()` rather than replacing text content so live price
+   polling/WebSocket updates keep working invisibly underneath the blur. */
+html[data-privacy-fields~="account"] [data-pv="account"],
+html[data-privacy-fields~="qty"] [data-pv="qty"],
+html[data-privacy-fields~="avgprice"] [data-pv="avgprice"],
+html[data-privacy-fields~="pnl"] [data-pv="pnl"],
+html[data-privacy-fields~="value"] [data-pv="value"] {
+  filter: blur(6px);
+  user-select: none;
+}

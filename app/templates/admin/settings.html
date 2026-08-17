@@ -9,22 +9,22 @@
         <p class="text-base-content/70 mt-1">Feature toggles for this AlgoMirror deployment</p>
     </div>
 
-    <div class="card bg-base-200 shadow-lg">
-        <div class="card-body">
-            <h2 class="card-title">Strategy Engine</h2>
-            <p class="text-base-content/70 text-sm">
-                Controls the strategy execution surface: Strategy Builder, Margin Calculator, Risk Monitor,
-                the Risk Manager / Supertrend Exit / Order Poller background services, and the broker-position
-                reconciliation warning on the dashboard. Turn this off if you use AlgoMirror only to view
-                accounts whose trades are placed by an external strategy engine (e.g. your own bot/SDK) -
-                otherwise every position not created by AlgoMirror's Strategy Builder gets flagged as
-                "untracked", and the dashboard's "Close All" action would attempt to close those positions.
-            </p>
+    <form method="POST" action="{{ url_for('admin.update_settings') }}" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
-            <form method="POST" action="{{ url_for('admin.update_settings') }}" class="mt-4">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="card bg-base-200 shadow-lg">
+            <div class="card-body">
+                <h2 class="card-title">Strategy Engine</h2>
+                <p class="text-base-content/70 text-sm">
+                    Controls the strategy execution surface: Strategy Builder, Margin Calculator, Risk Monitor,
+                    the Risk Manager / Supertrend Exit / Order Poller background services, and the broker-position
+                    reconciliation warning on the dashboard. Turn this off if you use AlgoMirror only to view
+                    accounts whose trades are placed by an external strategy engine (e.g. your own bot/SDK) -
+                    otherwise every position not created by AlgoMirror's Strategy Builder gets flagged as
+                    "untracked", and the dashboard's "Close All" action would attempt to close those positions.
+                </p>
 
-                <label class="flex items-center gap-3 cursor-pointer w-fit">
+                <label class="flex items-center gap-3 cursor-pointer w-fit mt-4">
                     <input type="checkbox" name="strategy_engine_enabled" class="toggle toggle-primary"
                            {{ 'checked' if app_settings.strategy_engine_enabled }} />
                     <span class="font-medium">
@@ -37,10 +37,54 @@
                     (<code>sudo systemctl restart algomirror</code>) for the background-service change
                     (Risk Manager / Supertrend Exit / Order Poller) to take effect.
                 </p>
-
-                <button type="submit" class="btn btn-primary btn-sm mt-4">Save</button>
-            </form>
+            </div>
         </div>
-    </div>
+
+        <div class="card bg-base-200 shadow-lg">
+            <div class="card-body">
+                <h2 class="card-title">Privacy Mode</h2>
+                <p class="text-base-content/70 text-sm">
+                    Each toggle below blurs that category of value everywhere it appears - handy before
+                    taking a screenshot to share. Takes effect the moment you save, no separate switch.
+                    LTP is never blurred, on any category - it's public market price, not personal exposure.
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    <label class="flex items-center gap-3 cursor-pointer w-fit">
+                        <input type="checkbox" name="privacy_hide_account_name" class="toggle toggle-primary toggle-sm"
+                               {{ 'checked' if app_settings.privacy_hide_account_name }} />
+                        <span class="font-medium">Account Name</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer w-fit">
+                        <input type="checkbox" name="privacy_hide_quantity" class="toggle toggle-primary toggle-sm"
+                               {{ 'checked' if app_settings.privacy_hide_quantity }} />
+                        <span class="font-medium">Quantity</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer w-fit">
+                        <input type="checkbox" name="privacy_hide_avg_price" class="toggle toggle-primary toggle-sm"
+                               {{ 'checked' if app_settings.privacy_hide_avg_price }} />
+                        <span class="font-medium">Average Price</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer w-fit">
+                        <input type="checkbox" name="privacy_hide_pnl" class="toggle toggle-primary toggle-sm"
+                               {{ 'checked' if app_settings.privacy_hide_pnl }} />
+                        <span class="font-medium">P&amp;L</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer w-fit">
+                        <input type="checkbox" name="privacy_hide_value" class="toggle toggle-primary toggle-sm"
+                               {{ 'checked' if app_settings.privacy_hide_value }} />
+                        <span class="font-medium">Invested / Current Value</span>
+                    </label>
+                </div>
+
+                <p class="text-xs text-base-content/50 mt-3">
+                    Applies across Holdings, Positions, Orderbook, Tradebook, Funds, Dashboard, and Account
+                    Positions - wherever a category above is actually shown on that page.
+                </p>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    </form>
 </div>
 {% endblock %}

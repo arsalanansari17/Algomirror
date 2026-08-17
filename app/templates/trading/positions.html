@@ -101,7 +101,7 @@
 
         <div class="stat">
             <div class="stat-title">Total P&L</div>
-            <div id="statTotalPnl" class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+            <div id="statTotalPnl" data-pv="pnl" class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
                 ₹{{ "%.2f"|format(total_pnl) }}
             </div>
         </div>
@@ -162,7 +162,7 @@
                             <td>
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(position.account_id, position.account_name + ' · ' + position.broker) }}
-                                    <div>
+                                    <div data-pv="account">
                                         <div class="text-xs font-medium">{{ position.account_name }}</div>
                                         <div class="text-xs opacity-50">{{ position.broker }}</div>
                                     </div>
@@ -175,18 +175,18 @@
                             </td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('exchange', '') }}</span></td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('product', '') }}</span></td>
-                            <td class="font-mono text-right {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}">
+                            <td class="font-mono text-right {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}" data-pv="qty">
                                 {{ position.get('quantity', 0) }}
                             </td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
+                            <td class="font-mono text-right" data-pv="avgprice">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
                             <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('ltp', 0)|float) }}</td>
-                            <td class="font-mono text-right {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}">
+                            <td class="font-mono text-right {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 ₹{{ "%.2f"|format(position.get('pnl', 0)|float) }}
                             </td>
-                            <td class="text-right {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}">
+                            <td class="text-right {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 {{ "%.2f"|format(position.get('pnl_percentage', 0)|float) }}%
                             </td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
+                            <td class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
                             <td class="text-right">
                                 {% if not is_closed %}
                                 <button type="button"

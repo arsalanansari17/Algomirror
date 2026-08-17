@@ -666,11 +666,23 @@ class AppSettings(db.Model):
     admin turn off the strategy execution surface (Strategy Builder, Risk
     Manager, Supertrend Exit, Order Poller, and the broker-position
     reconciliation banner) without touching code.
+
+    The privacy_hide_* fields are Privacy Mode: each one blurs that
+    category of sensitive data everywhere it's shown, the moment it's
+    saved - no separate on/off switch. Account name, quantity, average
+    price, P&L, and value can each be toggled independently - LTP is
+    never a candidate, since it's public market data rather than personal
+    exposure.
     """
     __tablename__ = 'app_settings'
 
     id = db.Column(db.Integer, primary_key=True)
     strategy_engine_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    privacy_hide_account_name = db.Column(db.Boolean, default=True, nullable=False)
+    privacy_hide_quantity = db.Column(db.Boolean, default=True, nullable=False)
+    privacy_hide_avg_price = db.Column(db.Boolean, default=True, nullable=False)
+    privacy_hide_pnl = db.Column(db.Boolean, default=True, nullable=False)
+    privacy_hide_value = db.Column(db.Boolean, default=True, nullable=False)
     updated_at = db.Column(db.DateTime, default=get_ist_now, onupdate=get_ist_now)
 
     @staticmethod
@@ -682,6 +694,23 @@ class AppSettings(db.Model):
             db.session.add(settings)
             db.session.commit()
         return settings
+
+    def privacy_fields_string(self):
+        """Space-separated list of categories Privacy Mode is configured to
+        hide, for direct use in the <html data-privacy-fields="..."> attribute
+        the CSS masking rules key off of."""
+        fields = []
+        if self.privacy_hide_account_name:
+            fields.append('account')
+        if self.privacy_hide_quantity:
+            fields.append('qty')
+        if self.privacy_hide_avg_price:
+            fields.append('avgprice')
+        if self.privacy_hide_pnl:
+            fields.append('pnl')
+        if self.privacy_hide_value:
+            fields.append('value')
+        return ' '.join(fields)
 
 
 class MarginRequirement(db.Model):
