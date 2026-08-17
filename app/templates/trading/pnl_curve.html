@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from 'macros/account_filter.html' import account_filter %}
 
 {% block title %}P&L Plot - AlgoMirror{% endblock %}
 
@@ -13,14 +14,7 @@
             </p>
         </div>
         <div class="flex items-center gap-3">
-            {% if accounts|length > 1 %}
-            <select id="pnlAccountSelect" class="select select-bordered select-sm h-9 min-w-[180px]" onchange="onPnlAccountChange(this.value)">
-                <option value="all" selected>All Accounts</option>
-                {% for account in accounts %}
-                <option value="{{ account.id }}">{{ account.account_name }}</option>
-                {% endfor %}
-            </select>
-            {% endif %}
+            {{ account_filter(accounts, [], 'trading.pnl_curve_page', on_change_js='onPnlAccountFilterChange') }}
             <span id="pnlCurveUpdatedAt" class="text-xs text-base-content/50"></span>
             {% if accounts %}
             <button type="button" id="pnlCurveScreenshotBtn" onclick="takePnlScreenshot()" class="btn btn-outline btn-sm">
@@ -165,7 +159,10 @@
 let pnlChartInstance = null;
 let pnlBaselineSeries = null;
 let lastPnlData = null;
-let selectedPnlAccount = 'all';
+// Empty set == "All Accounts" (the default) - same meaning as an empty
+// selected_account_ids on the server-filtered pages, kept as a set here
+// since 0, 1, or any subset of accounts can be checked at once.
+let selectedPnlAccountIds = new Set();
 // Numeric current-MTM value backing the Share caption - kept separate from
 // the formatted display string (formatRupee puts the currency symbol
 // *before* the sign, e.g. "₹-500.00", so checking that string for a
@@ -232,8 +229,35 @@ function computeSeriesStats(series) {
     };
 }
 
-function onPnlAccountChange(value) {
-    selectedPnlAccount = value;
+// Sums a set of per-account series that share the same timestamps at every
+// index - true here because the backend re-derives each per_account[i].series
+// from the same outer-joined/forward-filled DataFrame it builds the combined
+// curve from (see compute_combined_pnl in app/utils/pnl_curve.py), so this is
+// an exact recomputation of what the backend would return for that subset,
+// not an approximation.
+function sumSeries(seriesList) {
+    if (seriesList.length === 0) return [];
+    const length = seriesList[0].length;
+    const summed = [];
+    for (let i = 0; i < length; i++) {
+        let total = 0;
+        for (const series of seriesList) {
+            total += series[i] ? series[i].value : 0;
+        }
+        summed.push({ time: seriesList[0][i].time, value: total });
+    }
+    return summed;
+}
+
+function onPnlAccountFilterChange() {
+    const checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    const boxes = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox');
+    // All checked (or, degenerate, none checked) means "All Accounts" - same
+    // as the initial empty-set state, using the backend's own precomputed
+    // combined series rather than re-summing every account client-side.
+    selectedPnlAccountIds = (checked.length === boxes.length || checked.length === 0)
+        ? new Set()
+        : new Set(Array.prototype.map.call(checked, cb => cb.value));
     if (lastPnlData) {
         renderForSelection();
     }
@@ -336,7 +360,7 @@ async function takePnlScreenshot() {
         return;
     }
 
-    const excludedIds = ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'];
+    const excludedIds = ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
     // html2canvas captures exactly target's own box, not the padding its
@@ -434,7 +458,7 @@ async function capturePnlSharePngBlob() {
             scale: 2,
             logging: false,
             useCORS: true,
-            ignoreElements: (el) => ['pnlAccountSelect', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
+            ignoreElements: (el) => ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
         });
         return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
     } catch (e) {
@@ -553,8 +577,9 @@ function computeDrawdownSeries(series) {
 function renderForSelection() {
     if (!lastPnlData) return;
 
+    const isAll = selectedPnlAccountIds.size === 0;
     let series, drawdownSeries, stats, label;
-    if (selectedPnlAccount === 'all') {
+    if (isAll) {
         series = lastPnlData.pnl_series || [];
         drawdownSeries = lastPnlData.drawdown_series || [];
         stats = {
@@ -562,23 +587,33 @@ function renderForSelection() {
             min: lastPnlData.min_mtm, minTime: lastPnlData.min_mtm_time, maxDrawdown: lastPnlData.max_drawdown,
         };
         label = 'Combined';
-    } else {
-        const account = (lastPnlData.per_account || []).find(a => String(a.account_id) === String(selectedPnlAccount));
+    } else if (selectedPnlAccountIds.size === 1) {
+        const onlyId = selectedPnlAccountIds.values().next().value;
+        const account = (lastPnlData.per_account || []).find(a => String(a.account_id) === onlyId);
         series = (account && account.series) || [];
         drawdownSeries = computeDrawdownSeries(series);
         stats = computeSeriesStats(series);
         label = account ? account.account_name : 'Account';
+    } else {
+        // Genuine subset (2+, not all) - sum the matching per-account series.
+        // See sumSeries() for why this is exact, not an approximation.
+        const selectedAccounts = (lastPnlData.per_account || [])
+            .filter(a => selectedPnlAccountIds.has(String(a.account_id)));
+        series = sumSeries(selectedAccounts.map(a => a.series || []));
+        drawdownSeries = computeDrawdownSeries(series);
+        stats = computeSeriesStats(series);
+        label = `${selectedAccounts.length} Accounts`;
     }
 
     const titleEl = document.getElementById('pnlCurveTitle');
     if (titleEl) {
-        titleEl.textContent = selectedPnlAccount === 'all'
+        titleEl.textContent = isAll
             ? defaultPnlTitle
             : `${label} - Intraday P&L Plot`;
     }
     const subtitleEl = document.getElementById('pnlCurveSubtitle');
     if (subtitleEl) {
-        subtitleEl.textContent = selectedPnlAccount === 'all'
+        subtitleEl.textContent = isAll
             ? defaultPnlSubtitle
             : `Mark-to-market curve for ${label}, today only.`;
     }

@@ -1,33 +1,32 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
+{% from 'macros/account_filter.html' import account_filter %}
 
 {% block title %}Positions - AlgoMirror{% endblock %}
 
 {% block page_title %}Positions{% endblock %}
 
 {% block content %}
+{% set single_account = selected_account_ids|length == 1 %}
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex justify-between items-center flex-wrap gap-3">
         <div>
             <h1 class="text-3xl font-bold">Open Positions</h1>
             <p class="text-base-content/70 mt-1">
-                {{ "Showing positions for selected account" if single_account else "Showing positions across all accounts" }}
+                {% if not selected_account_ids or selected_account_ids|length == accounts|length %}
+                Showing positions across all accounts
+                {% elif single_account %}
+                Showing positions for selected account
+                {% else %}
+                Showing positions for {{ selected_account_ids|length }} selected accounts
+                {% endif %}
             </p>
         </div>
 
         <div class="flex gap-2 items-center flex-wrap">
-            <!-- Account Filter Dropdown -->
-            {% if accounts|length > 1 %}
-            <select class="select select-bordered select-sm h-9 min-w-[180px]" onchange="window.location.href = this.value">
-                <option value="{{ url_for('trading.positions') }}" {{ 'selected' if not single_account else '' }}>All Accounts</option>
-                {% for account in accounts %}
-                <option value="{{ url_for('trading.positions', account=account.id) }}" {{ 'selected' if single_account and selected_account_id == account.id else '' }}>
-                    {{ account.account_name }}
-                </option>
-                {% endfor %}
-            </select>
-            {% endif %}
+            <!-- Account Filter -->
+            {{ account_filter(accounts, selected_account_ids, 'trading.positions') }}
 
             <button id="positionsFiltersBtn" onclick="positionsFiltersModal.showModal()" class="btn btn-outline btn-sm h-9 relative">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

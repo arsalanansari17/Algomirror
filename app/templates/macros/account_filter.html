@@ -1,0 +1,68 @@
+<!-- Multi-account checkbox filter. Two modes:
+     - Navigate mode (default): renders an Apply button that builds
+       ?account=<id>&account=<id>... (or the bare endpoint URL, when every
+       account is checked) and navigates - matches the plain-JS
+       navigate-on-change pattern the old single-select dropdown used.
+     - Callback mode (on_change_js given): no Apply button/navigation: each
+       checkbox calls the given JS function name on change instead, for
+       pages (PnL Plot) that recompute client-side from already-fetched
+       data rather than reloading. -->
+{% macro account_filter(accounts, selected_ids, endpoint, on_change_js=none) -%}
+{% if accounts|length > 1 %}
+{% set effective_ids = selected_ids if selected_ids else accounts|map(attribute='id')|list %}
+<div class="dropdown dropdown-end" id="accountFilterDropdown">
+    <div tabindex="0" role="button" class="btn btn-sm btn-outline h-9 min-w-[180px] justify-between font-normal">
+        <span>
+            {%- if not selected_ids or selected_ids|length == accounts|length -%}
+                All Accounts
+            {%- elif selected_ids|length == 1 -%}
+                {%- for account in accounts if account.id == selected_ids[0] -%}{{ account.account_name }}{%- endfor -%}
+            {%- else -%}
+                {{ selected_ids|length }} Accounts
+            {%- endif -%}
+        </span>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+    </div>
+    <div tabindex="0" class="dropdown-content z-[1] menu p-3 shadow-lg bg-base-100 rounded-box w-64 border border-base-300 gap-1">
+        {% for account in accounts %}
+        <label class="flex items-center gap-2 py-1 px-1 rounded hover:bg-base-200 cursor-pointer">
+            <input type="checkbox" class="checkbox checkbox-sm account-filter-checkbox"
+                   value="{{ account.id }}"
+                   {{ 'checked' if account.id in effective_ids else '' }}
+                   {%- if on_change_js %} onchange="{{ on_change_js }}()"
+                   {%- else %} onchange="updateAccountFilterApplyState()"
+                   {%- endif -%}>
+            <span class="text-sm">{{ account.account_name }}</span>
+        </label>
+        {% endfor %}
+        {% if not on_change_js %}
+        <div class="divider my-1"></div>
+        <button type="button" id="accountFilterApplyBtn" class="btn btn-primary btn-sm"
+                onclick="applyAccountFilter('{{ url_for(endpoint) }}')">
+            Apply
+        </button>
+        {% endif %}
+    </div>
+</div>
+<script>
+function updateAccountFilterApplyState() {
+    var checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    var btn = document.getElementById('accountFilterApplyBtn');
+    if (btn) btn.disabled = (checked.length === 0);
+}
+function applyAccountFilter(baseUrl) {
+    var boxes = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox');
+    var checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    if (checked.length === 0) return;
+    if (checked.length === boxes.length) {
+        window.location.href = baseUrl;
+        return;
+    }
+    var params = Array.prototype.map.call(checked, function (cb) { return 'account=' + encodeURIComponent(cb.value); }).join('&');
+    window.location.href = baseUrl + '?' + params;
+}
+</script>
+{% endif %}
+{%- endmacro %}

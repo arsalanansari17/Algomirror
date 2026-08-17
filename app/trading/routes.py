@@ -48,34 +48,32 @@ def fetch_broker_data_parallel(accounts, api_method, app):
         return list(executor.map(fetch_one, accounts))
 
 
-def get_selected_account_id():
-    """Return the ?account= query param as an int, or None if absent/invalid."""
-    try:
-        return int(request.args.get('account'))
-    except (TypeError, ValueError):
-        return None
+def get_selected_account_ids():
+    """Return the ?account= query param(s) as a list of ints (repeated
+    params, e.g. ?account=1&account=2, select an arbitrary subset).
+    Empty list means no explicit selection -> all active accounts."""
+    ids = []
+    for raw in request.args.getlist('account'):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 
 def get_selected_accounts():
-    """Get accounts to display based on user selection"""
-    selected_account_id = request.args.get('account')
+    """Get accounts to display based on user selection. No ?account= params
+    -> all active accounts; one or more -> exactly that subset."""
+    selected_ids = get_selected_account_ids()
 
-    if selected_account_id:
-        try:
-            # Convert to integer for database query
-            account_id = int(selected_account_id)
-            # Single account view
-            account = TradingAccount.query.filter_by(
-                id=account_id, 
-                user_id=current_user.id,
-                is_active=True
-            ).first()
-            return [account] if account else []
-        except (ValueError, TypeError):
-            # Invalid account ID, return all accounts
-            return current_user.get_active_accounts()
+    if selected_ids:
+        return TradingAccount.query.filter(
+            TradingAccount.id.in_(selected_ids),
+            TradingAccount.user_id == current_user.id,
+            TradingAccount.is_active == True,
+        ).all()
     else:
-        # Multi-account view
+        # No selection - all active accounts
         return current_user.get_active_accounts()
 
 @trading_bp.route('/funds')
@@ -156,7 +154,7 @@ def funds():
 
     return render_template('trading/funds.html',
                          funds_data=funds_data,
-                         single_account=len(accounts) == 1,
+                         selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
 @trading_bp.route('/orderbook')
@@ -195,7 +193,7 @@ def orderbook():
     return render_template('trading/orderbook.html',
                          orderbook_data=orderbook_data,
                          statistics=statistics,
-                         single_account=len(accounts) == 1,
+                         selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
 @trading_bp.route('/tradebook')
@@ -239,7 +237,7 @@ def tradebook():
     return render_template('trading/tradebook.html',
                          tradebook_data=tradebook_data,
                          total_pnl=total_pnl,
-                         single_account=len(accounts) == 1,
+                         selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
 @trading_bp.route('/positions')
@@ -331,8 +329,7 @@ def positions():
                          open_count=len(open_positions),
                          long_count=long_count,
                          short_count=short_count,
-                         single_account=len(accounts) == 1,
-                         selected_account_id=get_selected_account_id(),
+                         selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
 
@@ -540,8 +537,7 @@ def holdings():
     return render_template('trading/holdings.html',
                          holdings_data=holdings_data,
                          statistics=statistics,
-                         single_account=len(accounts) == 1,
-                         selected_account_id=get_selected_account_id(),
+                         selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts(),
                          strategy_names=sorted(strategy_names))
 
