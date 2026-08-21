@@ -305,7 +305,17 @@ def positions():
                 qty = float(position.get('quantity', 0))
                 avg_price = float(position.get('average_price', 0))
                 ltp = float(position.get('ltp', 0))
-                pnl = float(position.get('pnl', 0) or 0)
+                raw_pnl = position.get('pnl')
+                if raw_pnl is None and qty != 0 and avg_price != 0 and ltp != 0:
+                    # Some brokers (Kotak) never return a pnl for positions at
+                    # all - confirmed in broker/kotak/mapping/order_data.py
+                    # upstream, whose transform_positions_data has no 'pnl'
+                    # key (Zerodha's does, straight from Kite). Derive it
+                    # ourselves from qty/avg_price and the (possibly
+                    # quote-backfilled) ltp instead of silently reading as 0.
+                    raw_pnl = (ltp - avg_price) * qty
+                    position['pnl'] = round(raw_pnl, 2)
+                pnl = float(raw_pnl or 0)
                 position['is_closed'] = (qty == 0)
                 if qty != 0 and avg_price != 0:
                     notional = abs(qty * avg_price)
