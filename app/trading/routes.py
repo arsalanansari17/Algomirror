@@ -261,6 +261,40 @@ def positions():
         except (ValueError, TypeError):
             return False
 
+    def backfill_missing_ltp(positions_list, account):
+        """Some brokers' positionbook API doesn't return a live LTP at all
+        (e.g. Kotak - the field is just 0 for every position from that
+        account, confirmed by reading broker/kotak/mapping/order_data.py
+        upstream), so Value/PnL% would otherwise be computed off a zero
+        price. Batch-fetch a real quote for just the affected symbols -
+        same multiquotes pattern the Holdings page already uses for Day's
+        P&L below. Best-effort: a quote failure just leaves ltp at
+        whatever the broker originally reported (usually 0)."""
+        missing = [
+            p for p in positions_list
+            if float(p.get('quantity', 0) or 0) != 0 and not float(p.get('ltp', 0) or 0)
+        ]
+        if not missing:
+            return
+        try:
+            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+            symbols = [{'symbol': p.get('symbol'), 'exchange': p.get('exchange')} for p in missing]
+            mq = client.multiquotes(symbols=symbols)
+            if not mq or mq.get('status') != 'success':
+                return
+            ltp_by_key = {}
+            for item in mq.get('results', []) or []:
+                data = item.get('data') or {}
+                ltp = data.get('ltp')
+                if ltp:
+                    ltp_by_key[(item.get('symbol'), item.get('exchange'))] = float(ltp)
+            for p in missing:
+                ltp = ltp_by_key.get((p.get('symbol'), p.get('exchange')))
+                if ltp:
+                    p['ltp'] = ltp
+        except Exception as e:
+            current_app.logger.warning(f'Could not backfill missing LTP for account {account.id}: {e}')
+
     def enrich_positions(positions_list, account):
         """Add account info and calculate metrics for positions"""
         for position in positions_list:
@@ -291,6 +325,7 @@ def positions():
     for account, response in results:
         if response and response.get('status') == 'success':
             pos_list = response.get('data', [])
+            backfill_missing_ltp(pos_list, account)
             enrich_positions(pos_list, account)
             # Keep squared-off (quantity 0) rows too - shown dimmed/"Closed" in
             # the template - so today's realized P&L from a closed position
@@ -307,6 +342,7 @@ def positions():
         elif account.last_positions_data:
             # Use cached data if API fails
             pos_list = account.last_positions_data
+            backfill_missing_ltp(pos_list, account)
             enrich_positions(pos_list, account)
             positions_data.extend(pos_list)
 
@@ -407,7 +443,14 @@ def holdings():
         (page-load only, no continuous polling/websocket like OpenAlgo's
         React frontend uses) and merge day_change (ltp - prev_close) back
         onto each holding. Best-effort: quote failures just leave holdings
-        without day_change, and the Day's P&L card is omitted entirely."""
+        without day_change, and the Day's P&L card is omitted entirely.
+
+        Same call also backfills a missing/zero ltp (some brokers, e.g.
+        Kotak, never return one in the holdings API itself - confirmed by
+        reading broker/kotak/mapping/order_data.py upstream, whose
+        transform_holdings_data never sets an 'ltp' key) so
+        enrich_holdings() below computes Current value/allocation off a
+        real price instead of silently falling back to average_price."""
         if not holding_list:
             return
         try:
@@ -416,17 +459,22 @@ def holdings():
             mq = client.multiquotes(symbols=symbols)
             if not mq or mq.get('status') != 'success':
                 return
-            prev_close_by_key = {}
+            quote_by_key = {}
             for item in mq.get('results', []) or []:
                 data = item.get('data') or {}
-                prev_close = data.get('prev_close')
-                if prev_close:
-                    prev_close_by_key[(item.get('symbol'), item.get('exchange'))] = float(prev_close)
+                quote_by_key[(item.get('symbol'), item.get('exchange'))] = data
             for h in holding_list:
-                prev_close = prev_close_by_key.get((h.get('symbol'), h.get('exchange')))
-                if prev_close and prev_close > 0:
+                quote = quote_by_key.get((h.get('symbol'), h.get('exchange')))
+                if not quote:
+                    continue
+                if not float(h.get('ltp', 0) or 0):
+                    quote_ltp = quote.get('ltp')
+                    if quote_ltp:
+                        h['ltp'] = float(quote_ltp)
+                prev_close = quote.get('prev_close')
+                if prev_close:
                     ltp = float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0)
-                    h['day_change'] = ltp - prev_close
+                    h['day_change'] = ltp - float(prev_close)
         except Exception as e:
             current_app.logger.warning(f'Could not fetch day-change quotes for account {account.id}: {e}')
 
@@ -439,8 +487,8 @@ def holdings():
         if response and response.get('status') == 'success':
             data = response.get('data', {})
             holding_list = data.get('holdings', [])
-            enrich_holdings(holding_list, account)
             attach_day_change(holding_list, account)
+            enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
             live_symbols_by_account[account.id] = {h.get('symbol') for h in holding_list if h.get('symbol')}
 
@@ -454,8 +502,8 @@ def holdings():
         elif account.last_holdings_data:
             data = account.last_holdings_data
             holding_list = data.get('holdings', []) if isinstance(data, dict) else []
-            enrich_holdings(holding_list, account)
             attach_day_change(holding_list, account)
+            enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
 
     # Manual strategy tags: join onto every row being displayed (including
