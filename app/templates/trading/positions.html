@@ -36,6 +36,15 @@
                 <span id="positionsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
             </button>
 
+            {% if not single_account and accounts|length > 1 %}
+            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="btn btn-outline btn-sm h-9">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
+                </svg>
+                Merge Accounts
+            </button>
+            {% endif %}
+
             {% if accounts %}
             <a href="{{ url_for('trading.pnl_curve_page') }}" class="btn btn-outline btn-sm h-9">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -157,9 +166,11 @@
                             data-avgprice="{{ position.get('average_price', 0) or 0 }}"
                             data-pnl="{{ position.get('pnl', 0) or 0 }}"
                             data-pnlpercent="{{ position.get('pnl_percentage', 0) or 0 }}"
-                            data-account-id="{{ position.get('account_id', '') }}">
+                            data-value="{{ position.get('current_value', 0) or 0 }}"
+                            data-account-id="{{ position.get('account_id', '') }}"
+                            data-account-name="{{ position.get('account_name', '') }}">
                             {% if not single_account %}
-                            <td>
+                            <td class="account-cell">
                                 <div class="flex items-center gap-2">
                                     {{ account_dot(position.account_id, position.account_name + ' · ' + position.broker) }}
                                     <div data-pv="account">
@@ -169,25 +180,25 @@
                                 </div>
                             </td>
                             {% endif %}
-                            <td class="font-semibold">
+                            <td class="font-semibold symbol-cell">
                                 {{ position.get('symbol', '') }}
                                 {% if is_closed %}<span class="badge badge-xs badge-ghost ml-1">Closed</span>{% endif %}
                             </td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('exchange', '') }}</span></td>
                             <td><span class="badge badge-sm badge-ghost">{{ position.get('product', '') }}</span></td>
-                            <td class="font-mono text-right {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}" data-pv="qty">
+                            <td class="font-mono text-right qty-cell {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}" data-pv="qty">
                                 {{ position.get('quantity', 0) }}
                             </td>
-                            <td class="font-mono text-right" data-pv="avgprice">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
-                            <td class="font-mono text-right">₹{{ "%.2f"|format(position.get('ltp', 0)|float) }}</td>
-                            <td class="font-mono text-right {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
+                            <td class="font-mono text-right avgprice-cell" data-pv="avgprice">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
+                            <td class="font-mono text-right ltp-cell">₹{{ "%.2f"|format(position.get('ltp', 0)|float) }}</td>
+                            <td class="font-mono text-right pnl-cell {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 ₹{{ "%.2f"|format(position.get('pnl', 0)|float) }}
                             </td>
-                            <td class="text-right {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
+                            <td class="text-right pnlpercent-cell {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 {{ "%.2f"|format(position.get('pnl_percentage', 0)|float) }}%
                             </td>
-                            <td class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
-                            <td class="text-right">
+                            <td class="font-mono text-right value-cell" data-pv="value">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
+                            <td class="text-right action-cell">
                                 {% if not is_closed %}
                                 <button type="button"
                                         class="btn btn-ghost btn-xs text-error"
@@ -315,6 +326,7 @@ let positionsFilters = { product: [], direction: [], exchange: [] };
 let positionsGrouping = 'none';
 let collapsedGroups = new Set();
 let positionsSort = { col: null, dir: 'asc' };
+let mergeViewOn = false;
 
 function loadPositionsPrefs() {
     try {
@@ -422,6 +434,11 @@ function getGroupKey(row) {
 }
 
 function applyPositionsFilters() {
+    // Strip any merged-view rows left over from before this filter/search
+    // change - otherwise they'd be counted alongside real rows in the pass
+    // below, then only get cleaned up after renderMergedView() runs at the end.
+    if (mergeViewOn) clearMergedView();
+
     const query = currentPositionsSearchQuery();
     const searchClear = document.getElementById('positionsSearchClear');
     if (searchClear) searchClear.classList.toggle('hidden', query === '');
@@ -461,6 +478,7 @@ function applyPositionsFilters() {
         : `${total} position${total === 1 ? '' : 's'}`;
 
     updateActiveFiltersBar(query, hasActive);
+    if (mergeViewOn) renderMergedView();
     regroupPositions();
     document.getElementById('positionsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
     document.getElementById('positionsFiltersDot').classList.toggle('hidden',
@@ -566,6 +584,136 @@ function regroupPositions() {
 function toggleGroupCollapse(key) {
     if (collapsedGroups.has(key)) collapsedGroups.delete(key); else collapsedGroups.add(key);
     regroupPositions();
+}
+
+function toggleMergeView() {
+    mergeViewOn = !mergeViewOn;
+    const btn = document.getElementById('mergePositionsBtn');
+    if (btn) {
+        btn.classList.toggle('btn-primary', mergeViewOn);
+        btn.classList.toggle('btn-outline', !mergeViewOn);
+    }
+    // Route through applyPositionsFilters() either way (not renderMergedView()
+    // directly) so the totals/grouping recompute runs consistently regardless
+    // of whether merge was just turned on or off.
+    if (!mergeViewOn) clearMergedView();
+    applyPositionsFilters();
+}
+
+function clearMergedView() {
+    document.querySelectorAll('#positionsTbody tr.merged-row').forEach(row => row.remove());
+    document.querySelectorAll('#positionsTbody tr.merge-hidden').forEach(row => {
+        row.classList.remove('merge-hidden');
+    });
+}
+
+// Client-side only - combines rows for the same symbol+exchange+product across
+// accounts into one synthetic row (summed qty, quantity-weighted avg price,
+// summed P&L/value), listing the combined accounts in the Account cell instead
+// of hiding the column. Nothing is persisted; toggling off just restores the
+// original rows. Runs before regroupPositions() (not after) so grouping,
+// collapse and sort all see one row per merged instrument rather than one per
+// account - the merged row carries the same symbol/exchange/product dataset
+// as a normal row, so getGroupKey() and sortPositions() need no changes.
+function renderMergedView() {
+    clearMergedView();
+    const tbody = document.getElementById('positionsTbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.group-header-row):not(.merged-row)'))
+        .filter(row => row.dataset.filteredVisible === '1');
+
+    const groups = {};
+    rows.forEach(row => {
+        const key = `${row.dataset.symbol}|${row.dataset.exchange}|${row.dataset.product}`;
+        (groups[key] = groups[key] || []).push(row);
+    });
+
+    Object.values(groups).forEach(group => {
+        if (group.length < 2) return;
+
+        let qty = 0, weightedAvgNum = 0, pnl = 0, value = 0, investment = 0;
+        const accountNames = [];
+        group.forEach(row => {
+            const q = parseFloat(row.dataset.qty) || 0;
+            const avg = parseFloat(row.dataset.avgprice) || 0;
+            qty += q;
+            weightedAvgNum += q * avg;
+            pnl += parseFloat(row.dataset.pnl) || 0;
+            value += parseFloat(row.dataset.value) || 0;
+            investment += Math.abs(q) * Math.abs(avg);
+            if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
+            row.classList.add('hidden', 'merge-hidden');
+            row.dataset.filteredVisible = '0';
+        });
+        const avgPrice = qty !== 0 ? weightedAvgNum / qty : 0;
+        const pnlPercent = investment > 0 ? (pnl / investment * 100) : 0;
+        const isClosed = qty === 0;
+        const direction = isClosed ? 'CLOSED' : (qty > 0 ? 'LONG' : 'SHORT');
+
+        const merged = group[0].cloneNode(true);
+        merged.classList.remove('hidden', 'merge-hidden', 'opacity-60');
+        merged.classList.add('merged-row');
+        merged.classList.toggle('opacity-60', isClosed);
+        merged.dataset.qty = qty;
+        merged.dataset.avgprice = avgPrice;
+        merged.dataset.pnl = pnl;
+        merged.dataset.pnlpercent = pnlPercent;
+        merged.dataset.value = value;
+        merged.dataset.direction = direction;
+        merged.dataset.filteredVisible = '1';
+        delete merged.dataset.accountId;
+
+        const acctCell = merged.querySelector('.account-cell');
+        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium" data-pv="account">${accountNames.join(', ')}</div>`;
+
+        // A merged row's net quantity can differ from any single leg (e.g. one
+        // account long, another short) - rebuild the "Closed" badge from the
+        // merged total rather than keeping whatever group[0] happened to render.
+        const symbolCell = merged.querySelector('.symbol-cell');
+        if (symbolCell) {
+            const symbolName = (group[0].dataset.symbol || '').toUpperCase();
+            symbolCell.textContent = '';
+            symbolCell.appendChild(document.createTextNode(symbolName + ' '));
+            if (isClosed) {
+                const badge = document.createElement('span');
+                badge.className = 'badge badge-xs badge-ghost ml-1';
+                badge.textContent = 'Closed';
+                symbolCell.appendChild(badge);
+            }
+        }
+
+        const qtyCell = merged.querySelector('.qty-cell');
+        if (qtyCell) {
+            qtyCell.textContent = qty;
+            qtyCell.classList.toggle('text-success', qty > 0);
+            qtyCell.classList.toggle('text-error', qty < 0);
+        }
+        const avgCell = merged.querySelector('.avgprice-cell');
+        if (avgCell) avgCell.textContent = '₹' + avgPrice.toFixed(2);
+        // LTP left as-is (group[0]'s value) - same symbol quotes the same live price on every account.
+        const pnlCell = merged.querySelector('.pnl-cell');
+        if (pnlCell) {
+            pnlCell.textContent = '₹' + pnl.toFixed(2);
+            pnlCell.classList.toggle('text-success', pnl >= 0);
+            pnlCell.classList.toggle('text-error', pnl < 0);
+        }
+        const pnlPercentCell = merged.querySelector('.pnlpercent-cell');
+        if (pnlPercentCell) {
+            pnlPercentCell.textContent = pnlPercent.toFixed(2) + '%';
+            pnlPercentCell.classList.toggle('text-success', pnlPercent >= 0);
+            pnlPercentCell.classList.toggle('text-error', pnlPercent < 0);
+        }
+        const valueCell = merged.querySelector('.value-cell');
+        if (valueCell) valueCell.textContent = '₹' + value.toFixed(2);
+
+        // A merged row spans more than one account, so there's no single
+        // (account_id, symbol) left to close - replace the action button with
+        // a placeholder, same reasoning as the tag-trigger replacement in the
+        // Holdings page's merge view.
+        const actionCell = merged.querySelector('.action-cell');
+        if (actionCell) actionCell.innerHTML = '<span class="text-xs text-base-content/30">—</span>';
+
+        group[group.length - 1].after(merged);
+    });
 }
 
 function sortPositions(col) {
