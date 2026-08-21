@@ -167,6 +167,7 @@
                             data-pnl="{{ position.get('pnl', 0) or 0 }}"
                             data-pnlpercent="{{ position.get('pnl_percentage', 0) or 0 }}"
                             data-value="{{ position.get('current_value', 0) or 0 }}"
+                            data-ltp="{{ position.get('ltp', 0) or 0 }}"
                             data-account-id="{{ position.get('account_id', '') }}"
                             data-account-name="{{ position.get('account_name', '') }}">
                             {% if not single_account %}
@@ -630,15 +631,27 @@ function renderMergedView() {
     Object.values(groups).forEach(group => {
         if (group.length < 2) return;
 
+        // Some brokers' positions API doesn't return a live LTP at all (e.g.
+        // Kotak - the field is just missing/0), so a leg from that account
+        // would otherwise contribute ₹0 to the merged Value even though the
+        // position is real. Since every leg in the group is the same
+        // instrument, backfill a zero/missing LTP from whichever other leg
+        // in the group actually has one, rather than trusting each leg's own
+        // (possibly broker-starved) reported LTP.
+        const representativeLtp = group
+            .map(row => parseFloat(row.dataset.ltp) || 0)
+            .find(v => v > 0) || 0;
+
         let qty = 0, weightedAvgNum = 0, pnl = 0, value = 0, investment = 0;
         const accountNames = [];
         group.forEach(row => {
             const q = parseFloat(row.dataset.qty) || 0;
             const avg = parseFloat(row.dataset.avgprice) || 0;
+            const ltp = parseFloat(row.dataset.ltp) || 0;
             qty += q;
             weightedAvgNum += q * avg;
             pnl += parseFloat(row.dataset.pnl) || 0;
-            value += parseFloat(row.dataset.value) || 0;
+            value += Math.abs(q) * (ltp > 0 ? ltp : representativeLtp);
             investment += Math.abs(q) * Math.abs(avg);
             if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
             row.classList.add('hidden', 'merge-hidden');
@@ -658,6 +671,7 @@ function renderMergedView() {
         merged.dataset.pnl = pnl;
         merged.dataset.pnlpercent = pnlPercent;
         merged.dataset.value = value;
+        merged.dataset.ltp = representativeLtp;
         merged.dataset.direction = direction;
         merged.dataset.filteredVisible = '1';
         delete merged.dataset.accountId;
@@ -689,7 +703,10 @@ function renderMergedView() {
         }
         const avgCell = merged.querySelector('.avgprice-cell');
         if (avgCell) avgCell.textContent = '₹' + avgPrice.toFixed(2);
-        // LTP left as-is (group[0]'s value) - same symbol quotes the same live price on every account.
+        // Same symbol quotes the same live price on every account, so use
+        // whichever leg actually reported one rather than assuming group[0] did.
+        const ltpCell = merged.querySelector('.ltp-cell');
+        if (ltpCell) ltpCell.textContent = '₹' + representativeLtp.toFixed(2);
         const pnlCell = merged.querySelector('.pnl-cell');
         if (pnlCell) {
             pnlCell.textContent = '₹' + pnl.toFixed(2);
