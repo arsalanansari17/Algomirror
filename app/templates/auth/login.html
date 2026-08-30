@@ -1,73 +1,76 @@
 {% extends "layout.html" %}
+{% from 'macros/ui.html' import button, card, card_content, input as ui_input %}
 
 {% block title %}Sign In - AlgoMirror{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center bg-gradient-to-b from-base-100 to-base-200">
+<div class="min-h-screen flex items-center justify-center bg-background">
     <div class="w-full max-w-md">
         <!-- Logo and Header -->
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-xl mb-4">
-                <span class="text-3xl font-bold text-primary-content">A</span>
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-oaprimary rounded-xl mb-4">
+                <span class="text-3xl font-bold text-oaprimary-foreground">A</span>
             </div>
-            <h1 class="text-3xl font-bold">Welcome back</h1>
-            <p class="text-base-content/60 mt-2">
+            <h1 class="text-3xl font-bold tracking-tight">Welcome back</h1>
+            <p class="text-muted-foreground mt-2">
                 Sign in to your account to continue
             </p>
         </div>
-        
-        <!-- Login Form Card -->
-        <div class="bg-base-100 rounded-xl shadow-xl border border-base-300 p-8">
-            <form method="POST" class="space-y-4">
-                {{ form.hidden_tag() }}
-                
-                <!-- Username Field -->
-                <div>
-                    <label class="text-sm font-medium text-base-content/70 block mb-2">
-                        Username
-                    </label>
-                    {{ form.username(class="w-full px-4 py-2 bg-base-200 border border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all", placeholder="Enter your username", autofocus="true") }}
-                    {% if form.username.errors %}
-                        {% for error in form.username.errors %}
-                            <p class="text-xs text-error mt-1">{{ error }}</p>
-                        {% endfor %}
-                    {% endif %}
-                </div>
-                
-                <!-- Password Field -->
-                <div>
-                    <label class="text-sm font-medium text-base-content/70 block mb-2">
-                        Password
-                    </label>
-                    {{ form.password(class="w-full px-4 py-2 bg-base-200 border border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all", placeholder="Enter your password", type="password") }}
-                    {% if form.password.errors %}
-                        {% for error in form.password.errors %}
-                            <p class="text-xs text-error mt-1">{{ error }}</p>
-                        {% endfor %}
-                    {% endif %}
-                </div>
-                
-                <!-- Remember Me -->
-                <div class="flex items-center">
-                    <label class="flex items-center cursor-pointer">
-                        {{ form.remember_me(class="w-4 h-4 text-primary rounded border-base-300 focus:ring-primary focus:ring-2") }}
-                        <span class="ml-2 text-sm text-base-content/70">Remember me</span>
-                    </label>
-                </div>
 
-                <!-- Submit Button -->
-                <button type="submit" class="w-full py-3 px-4 bg-primary text-primary-content font-medium rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base-100 transition-all">
-                    Sign In
-                </button>
-            </form>
+        <!-- Login Form Card -->
+        <div class="{{ card() }}">
+            <div class="{{ card_content() }}">
+                <form method="POST" class="space-y-4">
+                    {{ form.hidden_tag() }}
+
+                    <!-- Username Field -->
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground block mb-2">
+                            Username
+                        </label>
+                        {{ form.username(class=ui_input(), placeholder="Enter your username", autofocus="true") }}
+                        {% if form.username.errors %}
+                            {% for error in form.username.errors %}
+                                <p class="text-xs text-error mt-1">{{ error }}</p>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground block mb-2">
+                            Password
+                        </label>
+                        {{ form.password(class=ui_input(), placeholder="Enter your password", type="password") }}
+                        {% if form.password.errors %}
+                            {% for error in form.password.errors %}
+                                <p class="text-xs text-error mt-1">{{ error }}</p>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+
+                    <!-- Remember Me -->
+                    <div class="flex items-center">
+                        <label class="flex items-center cursor-pointer">
+                            {{ form.remember_me(class="w-4 h-4 text-oaprimary rounded border-border focus:ring-ring focus:ring-2") }}
+                            <span class="ml-2 text-sm text-muted-foreground">Remember me</span>
+                        </label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="{{ button('default') }} w-full">
+                        Sign In
+                    </button>
+                </form>
+            </div>
         </div>
-        
+
         <!-- Sign Up Link (only shown if no admin exists) -->
         {% if registration_available %}
         <div class="text-center mt-6">
-            <p class="text-sm text-base-content/60">
+            <p class="text-sm text-muted-foreground">
                 Don't have an account?
-                <a href="{{ url_for('auth.register') }}" class="text-primary hover:underline font-medium">
+                <a href="{{ url_for('auth.register') }}" class="text-oaprimary hover:underline font-medium">
                     Create Admin Account
                 </a>
             </p>
