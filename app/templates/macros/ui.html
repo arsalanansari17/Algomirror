@@ -44,6 +44,24 @@ DaisyUI's own theme-color slots - see tailwind.config.js.
 {{- (base ~ ' ' ~ variants.get(variant, variants['default']) ~ ' ' ~ sizes.get(size, sizes['default']) ~ ' ' ~ class) | trim -}}
 {% endmacro %}
 
+{#
+Shape/size only, no color variant - for buttons whose active/inactive look
+is toggled purely by JS (classList.toggle), not a server re-render (merge
+view, filter chips, allocation basis). Pair with the .oa-toggle-active /
+.oa-toggle-inactive classes from input.css instead of baking in a variant
+here - see the comment there for why plain utility classes can't be
+swapped safely for this.
+#}
+{% macro button_toggle_base(size='sm', class='') %}
+{%- set base = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/50" -%}
+{%- set sizes = {
+    'default': 'h-9 px-4 py-2',
+    'sm': 'h-8 rounded-md gap-1.5 px-3',
+    'lg': 'h-10 rounded-md px-6',
+} -%}
+{{- (base ~ ' ' ~ sizes.get(size, sizes['sm']) ~ ' ' ~ class) | trim -}}
+{% endmacro %}
+
 {% macro badge(variant='default', class='') %}
 {%- set base = "inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden" -%}
 {%- set variants = {

@@ -94,6 +94,26 @@
 }
 
 /* ============================================
+   TOGGLE-STATE BUTTON HELPERS
+   ============================================
+   Several pages toggle a button's active/inactive look purely via JS
+   (classList.toggle), not a server re-render - merge-view, filter chips,
+   allocation basis, etc. Plain Tailwind utility classes can't be swapped
+   that way safely: two utility classes in the same category (e.g.
+   bg-oaprimary vs bg-background) have no defined winner when both are
+   present, since Tailwind's JIT output order isn't something to reason
+   about by hand. These two composite classes give JS exactly one
+   named class to add/remove instead, matching the button() macro's own
+   default/outline variants exactly so a toggled button looks identical
+   to a real button('default')/button('outline'). */
+.oa-toggle-active {
+    @apply bg-oaprimary text-oaprimary-foreground border-oaprimary hover:bg-oaprimary/90;
+}
+.oa-toggle-inactive {
+    @apply border border-border bg-background text-foreground hover:bg-oaaccent hover:text-oaaccent-foreground;
+}
+
+/* ============================================
    BASE STYLES
    ============================================ */
 

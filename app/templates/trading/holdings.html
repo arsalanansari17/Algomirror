@@ -1,6 +1,8 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
+{% from 'macros/icons.html' import accounts as icon_merge %}
 
 {% block title %}Holdings - AlgoMirror{% endblock %}
 
@@ -15,10 +17,10 @@
 </datalist>
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center flex-wrap gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-3xl font-bold">Holdings</h1>
-            <p class="text-base-content/70 mt-1">
+            <h1 class="text-3xl font-bold tracking-tight">Investor Summary</h1>
+            <p class="text-muted-foreground">
                 {% if not selected_account_ids or selected_account_ids|length == accounts|length %}
                 Showing holdings across all accounts
                 {% elif single_account %}
@@ -29,97 +31,100 @@
             </p>
         </div>
 
-        <div class="flex gap-2 items-center flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
             <!-- Account Filter -->
             {{ account_filter(accounts, selected_account_ids, 'trading.holdings') }}
 
-            <button id="holdingsFiltersBtn" onclick="holdingsFiltersModal.showModal()" class="btn btn-outline btn-sm h-9 relative">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button id="holdingsFiltersBtn" onclick="holdingsFiltersModal.showModal()" class="{{ button('outline', 'sm') }} relative">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
                 Filters
-                <span id="holdingsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
+                <span id="holdingsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-destructive rounded-full"></span>
             </button>
 
             {% if not single_account and accounts|length > 1 %}
-            <button id="mergeAccountsBtn" onclick="toggleMergeView()" class="btn btn-outline btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
-                </svg>
+            <button id="mergeAccountsBtn" onclick="toggleMergeView()" class="{{ button_toggle_base('sm') }} oa-toggle-inactive">
+                {{ icon_merge('h-4 w-4') }}
                 Merge Accounts
             </button>
             {% endif %}
 
-            <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="location.reload()" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
             </button>
 
-            <button onclick="exportToCSV('holdings')" class="btn btn-success btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="exportToCSV('holdings')" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Export CSV
+                Export
             </button>
         </div>
     </div>
 
     <!-- Active Filters Bar -->
-    <div id="holdingsActiveFilters" class="hidden flex-wrap items-center gap-2">
-        <span class="text-sm text-base-content/70">Active Filters:</span>
-        <span id="filterChipT1" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has T1 Quantity</span>
-        <span id="filterChipPledged" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30">Has Pledged Quantity</span>
+    <div id="holdingsActiveFilters" class="hidden flex-wrap items-center gap-3">
+        <span class="text-sm text-muted-foreground">Active Filters:</span>
+        <span id="filterChipT1" class="hidden {{ badge('secondary') }} bg-pink-500/10 text-pink-600 border-pink-500/30">Has T1 Quantity</span>
+        <span id="filterChipPledged" class="hidden {{ badge('secondary') }} bg-pink-500/10 text-pink-600 border-pink-500/30">Has Pledged Quantity</span>
         <span id="filterChipsStrategy"></span>
-        <span id="filterChipSearch" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30"></span>
-        <button onclick="clearHoldingsFilters()" class="btn btn-outline btn-error btn-xs">Clear All</button>
+        <span id="filterChipSearch" class="hidden {{ badge('secondary') }} bg-pink-500/10 text-pink-600 border-pink-500/30"></span>
+        <button onclick="clearHoldingsFilters()" class="{{ button('outline', 'sm') }} text-destructive border-destructive/50 hover:bg-destructive/10">Clear All</button>
     </div>
 
     {% if holdings_data or statistics %}
-    <!-- Portfolio Summary -->
-    <div class="stats shadow w-full">
-        <div class="stat">
-            <div class="stat-title">Invested</div>
-            <div id="statInvested" data-pv="value" class="stat-value text-primary">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
-        </div>
-
-        <div class="stat">
-            <div class="stat-title">Current</div>
-            <div id="statCurrent" data-pv="value" class="stat-value text-info">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
-        </div>
-
-        <div class="stat {{ 'hidden' if statistics.totaldaypnl is not defined }}" id="statDayPnlWrap">
-            <div class="stat-title">Day's P&L</div>
-            <div id="statDayPnl" data-pv="pnl" class="stat-value {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
-                ₹{{ "%.2f"|format(statistics.totaldaypnl) if statistics.totaldaypnl is defined else "0.00" }}
+    <!-- Stats Cards -->
+    <div class="grid gap-4 md:grid-cols-4">
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Invested</div>
+                <div id="statInvested" data-pv="value" class="{{ card_title() }} text-2xl">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
             </div>
-            <div id="statDayPnlPct" data-pv="pnl" class="stat-desc">{{ "+" if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) if statistics.totaldaypnlpercentage is defined else "0.00" }}%</div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">Total P&L</div>
-            <div id="statTotalPnl" data-pv="pnl" class="stat-value {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
-                ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Current</div>
+                <div id="statCurrent" data-pv="value" class="{{ card_title() }} text-2xl text-oaprimary">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
             </div>
-            <div id="statTotalPnlPct" data-pv="pnl" class="stat-desc">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
+        </div>
+        <div class="{{ card() }} {{ 'hidden' if statistics.totaldaypnl is not defined }}" id="statDayPnlWrap">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Day's P&amp;L</div>
+                <div id="statDayPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
+                    ₹{{ "%.2f"|format(statistics.totaldaypnl) if statistics.totaldaypnl is defined else "0.00" }}
+                </div>
+                <div id="statDayPnlPct" data-pv="pnl" class="text-sm {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' }}">{{ "+" if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) if statistics.totaldaypnlpercentage is defined else "0.00" }}%</div>
+            </div>
+        </div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Total P&amp;L</div>
+                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
+                    ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
+                </div>
+                <div id="statTotalPnlPct" data-pv="pnl" class="text-sm {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
+            </div>
         </div>
     </div>
 
     {% if holdings_data %}
     <!-- Holdings Table -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-            <div class="flex items-center justify-between flex-wrap gap-3">
-                <h2 class="card-title">
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-0') }}">
+            <div class="pt-3 pb-4 flex items-center justify-between flex-wrap gap-3">
+                <h2 class="font-semibold">
                     <span id="holdingsCount">{{ holdings_data|length }} stock{{ '' if holdings_data|length == 1 else 's' }}</span>
                 </h2>
                 <div class="relative w-full max-w-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    <input type="text" id="holdingsSearch" placeholder="Search symbol..." class="input input-bordered input-sm w-full pl-9 pr-8" oninput="applyHoldingsFilters()">
-                    <button type="button" id="holdingsSearchClear" onclick="clearHoldingsSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content">
+                    <input type="text" id="holdingsSearch" placeholder="Search symbol..." class="{{ ui_input('pl-8 pr-8') }}" oninput="applyHoldingsFilters()">
+                    <button type="button" id="holdingsSearchClear" onclick="clearHoldingsSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                         &times;
                     </button>
                 </div>
@@ -243,7 +248,7 @@
                 </table>
             </div>
 
-            <div id="holdingsNoMatch" class="hidden text-center py-12 text-base-content/60">
+            <div id="holdingsNoMatch" class="hidden text-center py-12 text-muted-foreground">
                 No holdings match your filters. Try a different search or clear the filters.
             </div>
         </div>
@@ -252,13 +257,13 @@
 
     {% else %}
     <!-- No Holdings -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body text-center py-16">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             <h2 class="text-2xl font-bold mb-2">No Holdings Found</h2>
-            <p class="text-base-content/70 max-w-md mx-auto">
+            <p class="text-muted-foreground max-w-md mx-auto">
                 {% if accounts|length == 0 %}
                 You need to add a trading account first to view holdings.
                 {% else %}
@@ -267,8 +272,8 @@
             </p>
             {% if accounts|length == 0 %}
             <div class="mt-6">
-                <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Add Account
@@ -688,8 +693,8 @@ function toggleMergeView() {
     mergeViewOn = !mergeViewOn;
     const btn = document.getElementById('mergeAccountsBtn');
     if (btn) {
-        btn.classList.toggle('btn-primary', mergeViewOn);
-        btn.classList.toggle('btn-outline', !mergeViewOn);
+        btn.classList.toggle('oa-toggle-active', mergeViewOn);
+        btn.classList.toggle('oa-toggle-inactive', !mergeViewOn);
     }
     // Route through applyHoldingsFilters() either way (not renderMergedView()
     // directly) so the summary stats/allocation/footer recompute runs

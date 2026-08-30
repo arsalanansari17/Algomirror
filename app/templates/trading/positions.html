@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
-{% from 'macros/ui.html' import button, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
+{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
 {% from 'macros/icons.html' import pnl as icon_pnl, accounts as icon_merge %}
 
 {% block title %}Positions - AlgoMirror{% endblock %}
@@ -54,7 +54,7 @@
             </button>
 
             {% if not single_account and accounts|length > 1 %}
-            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="{{ button('outline', 'sm') }}">
+            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="{{ button_toggle_base('sm') }} oa-toggle-inactive">
                 {{ icon_merge('h-4 w-4') }}
                 Merge Accounts
             </button>
@@ -620,8 +620,8 @@ function toggleMergeView() {
     mergeViewOn = !mergeViewOn;
     const btn = document.getElementById('mergePositionsBtn');
     if (btn) {
-        btn.classList.toggle('btn-primary', mergeViewOn);
-        btn.classList.toggle('btn-outline', !mergeViewOn);
+        btn.classList.toggle('oa-toggle-active', mergeViewOn);
+        btn.classList.toggle('oa-toggle-inactive', !mergeViewOn);
     }
     // Route through applyPositionsFilters() either way (not renderMergedView()
     // directly) so the totals/grouping recompute runs consistently regardless
