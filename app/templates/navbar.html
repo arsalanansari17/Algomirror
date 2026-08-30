@@ -1,118 +1,131 @@
-<div class="navbar-start">
-    <!-- Mobile menu button - only visible on small screens -->
-    <div class="dropdown md:hidden">
-        <label tabindex="0" class="btn btn-ghost btn-circle">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-        </label>
-        {% if current_user.is_authenticated %}
-        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-            <li><a href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
-            <li><a href="{{ url_for('accounts.manage') }}">Accounts</a></li>
-            <li>
-                <a>Trading</a>
-                <ul class="p-2">
-                    <li><a href="{{ url_for('trading.funds') }}">Funds</a></li>
-                    <li><a href="{{ url_for('trading.orderbook') }}">Orderbook</a></li>
-                    <li><a href="{{ url_for('trading.tradebook') }}">Tradebook</a></li>
-                    <li><a href="{{ url_for('trading.positions') }}">Positions</a></li>
-                    <li><a href="{{ url_for('trading.holdings') }}">Holdings</a></li>
-                </ul>
-            </li>
-            <li>
-                <a>Margin</a>
-                <ul class="p-2">
-                    <li><a href="{{ url_for('margin.dashboard') }}">Dashboard</a></li>
-                    <li><a href="{{ url_for('margin.requirements') }}">Requirements</a></li>
-                    <li><a href="{{ url_for('margin.calculator') }}">Calculator</a></li>
-                </ul>
-            </li>
-        </ul>
-        {% endif %}
-    </div>
-    <!-- Logo -->
-    <a href="{{ url_for('main.dashboard') if current_user.is_authenticated else url_for('main.index') }}" class="btn btn-ghost normal-case text-xl">
-        <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="AlgoMirror" class="h-8 w-8">
-        <span class="font-semibold hidden sm:inline">AlgoMirror</span>
-    </a>
-</div>
+{#
+Top navbar - structurally matches OpenAlgo's Navbar.tsx: a sticky, blurred
+top bar with a flat icon+label row (no dropdown grouping) instead of the
+old "Trading ▾ / Margin ▾" menus, plus a profile dropdown for secondary
+pages. See project_algomirror_ui_redesign_plan.md for why.
+#}
+{% from 'macros/icons.html' import dashboard, orderbook, tradebook, positions, holdings, funds, pnl, accounts, strategy, margin, settings, user, clock, shield, logout, sun, moon, menu, close %}
 
-<!-- Desktop menu - only visible on medium screens and up -->
-<div class="navbar-center hidden md:flex">
-    {% if current_user.is_authenticated %}
-    <ul class="menu menu-horizontal px-1">
-        <li><a href="{{ url_for('main.dashboard') }}" class="{{ 'active' if request.endpoint == 'main.dashboard' }}">Dashboard</a></li>
-        <li><a href="{{ url_for('accounts.manage') }}" class="{{ 'active' if request.endpoint.startswith('accounts.') }}">Accounts</a></li>
-        <li class="dropdown dropdown-hover">
-            <label tabindex="0" class="btn btn-ghost">
-                Trading
-                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
-            </label>
-            <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                <li><a href="{{ url_for('trading.funds') }}">Funds</a></li>
-                <li><a href="{{ url_for('trading.orderbook') }}">Orderbook</a></li>
-                <li><a href="{{ url_for('trading.tradebook') }}">Tradebook</a></li>
-                <li><a href="{{ url_for('trading.positions') }}">Positions</a></li>
-                <li><a href="{{ url_for('trading.holdings') }}">Holdings</a></li>
-            </ul>
-        </li>
-        <li class="dropdown dropdown-hover">
-            <label tabindex="0" class="btn btn-ghost">
-                Margin
-                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
-            </label>
-            <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                <li><a href="{{ url_for('margin.dashboard') }}">Dashboard</a></li>
-                <li><a href="{{ url_for('margin.requirements') }}">Requirements</a></li>
-                <li><a href="{{ url_for('margin.calculator') }}">Calculator</a></li>
-            </ul>
-        </li>
-    </ul>
-    {% endif %}
-</div>
+{% set nav_items = [
+    {'endpoint': 'main.dashboard', 'label': 'Dashboard', 'icon': dashboard},
+    {'endpoint': 'trading.orderbook', 'label': 'Orderbook', 'icon': orderbook},
+    {'endpoint': 'trading.tradebook', 'label': 'Tradebook', 'icon': tradebook},
+    {'endpoint': 'trading.positions', 'label': 'Positions', 'icon': positions},
+    {'endpoint': 'trading.holdings', 'label': 'Holdings', 'icon': holdings},
+    {'endpoint': 'trading.funds', 'label': 'Funds', 'icon': funds},
+    {'endpoint': 'trading.pnl_curve_page', 'label': 'P&L Plot', 'icon': pnl},
+    {'endpoint': 'accounts.manage', 'label': 'Accounts', 'icon': accounts},
+] %}
 
-<div class="navbar-end">
-    {% if current_user.is_authenticated %}
-    <!-- Theme toggle -->
-    <button onclick="toggleTheme()" class="btn btn-ghost btn-circle btn-sm" aria-label="Toggle theme">
-        <!-- Sun icon for light theme -->
-        <svg id="theme-icon-light" class="h-5 w-5 hidden" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path>
-        </svg>
-        <!-- Moon icon for dark theme -->
-        <svg id="theme-icon-dark" class="h-5 w-5 hidden" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-        </svg>
-    </button>
-    
-    <!-- User menu -->
-    <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar">
-            <div class="w-8 h-8 rounded-full bg-primary text-primary-content flex items-center justify-center">
-                <span class="text-sm font-medium">{{ current_user.username[0].upper() }}</span>
+{% set profile_items = [
+    {'endpoint': 'auth.change_password', 'label': 'Profile Settings', 'icon': user},
+    {'endpoint': 'margin.dashboard', 'label': 'Margin', 'icon': margin},
+] + ([{'endpoint': 'strategy.create_new_strategy', 'label': 'Strategy', 'icon': strategy}] if strategy_engine_enabled else []) + [
+    {'endpoint': 'settings.index', 'label': 'Trading Settings', 'icon': settings},
+] + ([
+    {'endpoint': 'trading.trading_hours', 'label': 'Trading Hours', 'icon': clock},
+    {'endpoint': 'admin.settings', 'label': 'Platform Settings', 'icon': settings},
+    {'endpoint': 'diagnose.index', 'label': 'Diagnose', 'icon': shield},
+] if current_user.is_authenticated and current_user.is_admin else []) %}
+
+<nav class="sticky top-0 z-50 w-full border-b border-base-300 bg-base-100/95 backdrop-blur">
+    <div class="container mx-auto px-4 flex h-14 items-center">
+        <!-- Mobile menu button -->
+        <button type="button" onclick="toggleMobileNav()" class="btn btn-ghost btn-sm btn-square mr-2 md:hidden" aria-label="Toggle menu">
+            {{ menu('h-5 w-5') }}
+        </button>
+
+        <!-- Logo -->
+        <a href="{{ url_for('main.dashboard') }}" class="flex items-center gap-2 mr-6 shrink-0">
+            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="AlgoMirror" class="h-8 w-8">
+            <span class="hidden font-semibold sm:inline-block">AlgoMirror</span>
+        </a>
+
+        <!-- Desktop nav: icon-only between md-xl so everything fits narrower
+             screens, full label from xl up - same breakpoint strategy as
+             OpenAlgo's own navbar (its issue #1384). -->
+        <div class="hidden md:flex items-center gap-1 overflow-x-auto">
+            {% for item in nav_items %}
+            {% set active = request.endpoint == item.endpoint %}
+            <a href="{{ url_for(item.endpoint) }}" title="{{ item.label }}"
+               class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap {{ 'bg-primary text-primary-content' if active else 'text-base-content/70 hover:bg-base-200 hover:text-base-content' }}">
+                {{ item.icon('h-4 w-4 shrink-0') }}
+                <span class="hidden xl:inline">{{ item.label }}</span>
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Right side -->
+        <div class="ml-auto flex items-center gap-1 sm:gap-2">
+            <button onclick="toggleTheme()" class="btn btn-ghost btn-sm btn-square" aria-label="Toggle theme">
+                <span id="theme-icon-light">{{ sun('h-4 w-4 hidden') }}</span>
+                <span id="theme-icon-dark">{{ moon('h-4 w-4') }}</span>
+            </button>
+
+            <div class="dropdown dropdown-end">
+                <div tabindex="0" role="button" class="btn btn-ghost btn-square btn-sm rounded-full bg-primary text-primary-content">
+                    <span class="text-sm font-medium">{{ current_user.username[0].upper() if current_user.is_authenticated else 'A' }}</span>
+                </div>
+                <ul tabindex="0" class="dropdown-content z-50 menu p-2 shadow-lg bg-base-100 border border-base-300 rounded-box w-56 mt-2">
+                    {% for item in profile_items %}
+                    <li><a href="{{ url_for(item.endpoint) }}" class="flex items-center gap-2">{{ item.icon('h-4 w-4') }} {{ item.label }}</a></li>
+                    {% endfor %}
+                    <li><a href="https://docs.openalgo.in" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2">{{ dashboard('h-4 w-4') }} Docs</a></li>
+                    <div class="divider my-1"></div>
+                    <li>
+                        <form method="POST" action="{{ url_for('auth.logout') }}" class="m-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="flex items-center gap-2 w-full text-error">{{ logout('h-4 w-4') }} Logout</button>
+                        </form>
+                    </li>
+                </ul>
             </div>
         </div>
-        <ul tabindex="0" class="dropdown-content z-50 menu p-2 shadow bg-base-100 rounded-box w-52">
-            <li><a href="{{ url_for('auth.change_password') }}">Profile</a></li>
-            <li><a href="{{ url_for('accounts.manage') }}">Manage Accounts</a></li>
-            <div class="divider my-1"></div>
-            <li>
-                <form method="POST" action="{{ url_for('auth.logout') }}" class="m-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <button type="submit" class="text-error w-full text-left">Logout</button>
-                </form>
-            </li>
-        </ul>
     </div>
-    {% else %}
-    <div class="space-x-2">
-        <a href="{{ url_for('auth.login') }}" class="btn btn-ghost btn-sm">Login</a>
-        <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-sm">Sign Up</a>
+</nav>
+
+<!-- Mobile slide-out menu: everything not in the bottom nav (see
+     mobile_bottom_nav.html), plus the profile items - mirrors OpenAlgo's
+     Sheet component without needing a JS dependency for it. -->
+<div id="mobile-nav-backdrop" onclick="toggleMobileNav()" class="hidden fixed inset-0 bg-black/50 z-[60] md:hidden"></div>
+<div id="mobile-nav-panel" class="hidden fixed inset-y-0 left-0 z-[70] w-72 bg-base-100 border-r border-base-300 overflow-y-auto md:hidden">
+    <div class="flex items-center justify-between px-4 h-14 border-b border-base-300">
+        <a href="{{ url_for('main.dashboard') }}" class="flex items-center gap-2" onclick="toggleMobileNav()">
+            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="AlgoMirror" class="h-8 w-8">
+            <span class="font-semibold">AlgoMirror</span>
+        </a>
+        <button type="button" onclick="toggleMobileNav()" class="btn btn-ghost btn-sm btn-square" aria-label="Close menu">
+            {{ close('h-5 w-5') }}
+        </button>
     </div>
-    {% endif %}
+    <div class="flex flex-col gap-4 py-4">
+        <nav class="flex flex-col gap-1 px-2">
+            <div class="px-3 py-2 text-xs font-medium text-base-content/50 uppercase tracking-wider">Navigation</div>
+            {% for item in nav_items %}
+            {% set active = request.endpoint == item.endpoint %}
+            <a href="{{ url_for(item.endpoint) }}" class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors {{ 'bg-primary text-primary-content' if active else 'hover:bg-base-200' }}">
+                {{ item.icon('h-4 w-4') }} {{ item.label }}
+            </a>
+            {% endfor %}
+        </nav>
+        <nav class="flex flex-col gap-1 px-2 border-t border-base-300 pt-4">
+            <div class="px-3 py-2 text-xs font-medium text-base-content/50 uppercase tracking-wider">Quick Access</div>
+            {% for item in profile_items %}
+            <a href="{{ url_for(item.endpoint) }}" class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors hover:bg-base-200">
+                {{ item.icon('h-4 w-4') }} {{ item.label }}
+            </a>
+            {% endfor %}
+        </nav>
+    </div>
 </div>
+
+<script>
+function toggleMobileNav() {
+    const backdrop = document.getElementById('mobile-nav-backdrop');
+    const panel = document.getElementById('mobile-nav-panel');
+    const isOpen = !panel.classList.contains('hidden');
+    backdrop.classList.toggle('hidden', isOpen);
+    panel.classList.toggle('hidden', isOpen);
+    document.body.classList.toggle('overflow-hidden', !isOpen);
+}
+</script>

@@ -1,15 +1,22 @@
-<div class="footer-center p-4">
-    <div class="text-center">
-        <div class="text-sm opacity-70">
-            <p>© 2024 AlgoMirror - Multi Account OpenAlgo Management Platform</p>
-            <p class="mt-1">
-                Built with 
-                <a href="https://openalgo.in" target="_blank" class="link link-primary">OpenAlgo</a>
-                • 
-                <a href="https://docs.openalgo.in" target="_blank" class="link link-primary">Documentation</a>
-                • 
-                <span class="text-accent">Version 1.0.0</span>
-            </p>
+{# Footer - structurally matches OpenAlgo's Footer.tsx, keeps AlgoMirror's own branding/links and real compliance disclaimer rather than OpenAlgo's own (this isn't OpenAlgo). #}
+<footer class="hidden md:block mt-auto border-t border-base-300 bg-base-200/50">
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-4 text-sm text-base-content/60">
+            <div class="flex items-center gap-2">
+                <span>© 2026 AlgoMirror</span>
+                <span class="hidden md:inline">|</span>
+                <a href="https://openalgo.in" target="_blank" rel="noopener noreferrer" class="link link-primary font-medium">Built on OpenAlgo</a>
+            </div>
+            <span class="hidden md:inline">|</span>
+            <span class="text-center">Multi-Account OpenAlgo Management Platform</span>
+            <span class="hidden md:inline">|</span>
+            <span class="badge badge-outline gap-1"><span class="opacity-75">v</span>1.0.0</span>
         </div>
+        <p class="text-xs text-base-content/50 text-center mt-4 max-w-3xl mx-auto">
+            <strong>Disclaimer:</strong> Always test thoroughly in OpenAlgo Sandbox mode before deploying to a live trading account.
+            Trading in F&amp;O involves substantial risk. Past performance does not guarantee future results.
+            You are solely responsible for your trading decisions.
+            <span class="text-base-content/40">| SEBI Static IP Compliant</span>
+        </p>
     </div>
-</div>
+</footer>

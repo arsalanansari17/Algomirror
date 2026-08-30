@@ -1,0 +1,26 @@
+{#
+Fixed bottom nav shown only on mobile - matches OpenAlgo's MobileBottomNav.tsx.
+5 highest-traffic pages; everything else lives in navbar.html's slide-out menu.
+#}
+{% from 'macros/icons.html' import dashboard, orderbook, positions, holdings, accounts %}
+
+{% set bottom_nav_items = [
+    {'endpoint': 'main.dashboard', 'label': 'Dashboard', 'icon': dashboard},
+    {'endpoint': 'trading.positions', 'label': 'Positions', 'icon': positions},
+    {'endpoint': 'trading.holdings', 'label': 'Holdings', 'icon': holdings},
+    {'endpoint': 'trading.orderbook', 'label': 'Orderbook', 'icon': orderbook},
+    {'endpoint': 'accounts.manage', 'label': 'Accounts', 'icon': accounts},
+] %}
+
+<nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-base-300 bg-base-100/95 backdrop-blur">
+    <div class="flex items-center justify-around h-16">
+        {% for item in bottom_nav_items %}
+        {% set active = request.endpoint == item.endpoint %}
+        <a href="{{ url_for(item.endpoint) }}"
+           class="flex flex-col items-center justify-center gap-1 min-w-[64px] min-h-[44px] px-3 py-2 rounded-lg transition-colors {{ 'text-primary' if active else 'text-base-content/60 hover:text-base-content' }}">
+            {{ item.icon('h-5 w-5') }}
+            <span class="text-[10px] font-medium">{{ item.label }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</nav>
