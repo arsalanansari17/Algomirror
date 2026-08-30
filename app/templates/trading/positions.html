@@ -1,6 +1,8 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
+{% from 'macros/icons.html' import pnl as icon_pnl, accounts as icon_merge %}
 
 {% block title %}Positions - AlgoMirror{% endblock %}
 
@@ -8,12 +10,27 @@
 
 {% block content %}
 {% set single_account = selected_account_ids|length == 1 %}
+{# Matches OpenAlgo's own EXCHANGE_COLORS/PRODUCT_COLORS constants exactly (Positions.tsx). #}
+{% set EXCHANGE_COLORS = {
+    'NSE': 'bg-cyan-500/20 text-cyan-600 border-cyan-500/30',
+    'BSE': 'bg-slate-500/20 text-slate-600 border-slate-500/30',
+    'NFO': 'bg-purple-500/20 text-purple-600 border-purple-500/30',
+    'BFO': 'bg-amber-500/20 text-amber-600 border-amber-500/30',
+    'MCX': 'bg-blue-500/20 text-blue-600 border-blue-500/30',
+    'CDS': 'bg-teal-500/20 text-teal-600 border-teal-500/30',
+} %}
+{% set PRODUCT_COLORS = {
+    'CNC': 'bg-purple-500/20 text-purple-600 border-purple-500/30',
+    'MIS': 'bg-cyan-500/20 text-cyan-600 border-cyan-500/30',
+    'NRML': 'bg-slate-500/20 text-slate-600 border-slate-500/30',
+} %}
+{% set BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden' %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center flex-wrap gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-3xl font-bold">Open Positions</h1>
-            <p class="text-base-content/70 mt-1">
+            <h1 class="text-3xl font-bold tracking-tight">Positions</h1>
+            <p class="text-muted-foreground">
                 {% if not selected_account_ids or selected_account_ids|length == accounts|length %}
                 Showing positions across all accounts
                 {% elif single_account %}
@@ -24,53 +41,49 @@
             </p>
         </div>
 
-        <div class="flex gap-2 items-center flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
             <!-- Account Filter -->
             {{ account_filter(accounts, selected_account_ids, 'trading.positions') }}
 
-            <button id="positionsFiltersBtn" onclick="positionsFiltersModal.showModal()" class="btn btn-outline btn-sm h-9 relative">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button id="positionsFiltersBtn" onclick="positionsFiltersModal.showModal()" class="{{ button('outline', 'sm') }} relative">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
                 Filters
-                <span id="positionsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-error rounded-full"></span>
+                <span id="positionsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-destructive rounded-full"></span>
             </button>
 
             {% if not single_account and accounts|length > 1 %}
-            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="btn btn-outline btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
-                </svg>
+            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="{{ button('outline', 'sm') }}">
+                {{ icon_merge('h-4 w-4') }}
                 Merge Accounts
             </button>
             {% endif %}
 
             {% if accounts %}
-            <a href="{{ url_for('trading.pnl_curve_page') }}" class="btn btn-outline btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
+            <a href="{{ url_for('trading.pnl_curve_page') }}" class="{{ button('outline', 'sm') }}">
+                {{ icon_pnl('h-4 w-4') }}
                 P&amp;L Plot
             </a>
             {% endif %}
 
-            <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="location.reload()" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
             </button>
 
-            <button onclick="exportToCSV('positions')" class="btn btn-success btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="exportToCSV('positions')" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Export CSV
+                Export
             </button>
 
             {% if positions_data %}
-            <button onclick="closeAllPositions()" class="btn btn-error btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="closeAllPositions()" class="{{ button('destructive', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
                 Close All
@@ -80,55 +93,60 @@
     </div>
 
     <!-- Active Filters Bar -->
-    <div id="positionsActiveFilters" class="hidden flex-wrap items-center gap-2">
-        <span class="text-sm text-base-content/70">Active Filters:</span>
-        <span id="filterChipGrouping" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30"></span>
+    <div id="positionsActiveFilters" class="hidden flex-wrap items-center gap-3">
+        <span class="text-sm text-muted-foreground">Active Filters:</span>
+        <span id="filterChipGrouping" class="hidden {{ badge('secondary') }} bg-pink-500/10 text-pink-600 border-pink-500/30"></span>
         <span id="filterChipsProduct"></span>
         <span id="filterChipsDirection"></span>
         <span id="filterChipsExchange"></span>
-        <span id="filterChipPositionsSearch" class="hidden badge bg-pink-500/10 text-pink-600 border border-pink-500/30"></span>
-        <button onclick="clearPositionsFilters()" class="btn btn-outline btn-error btn-xs">Clear All</button>
+        <span id="filterChipPositionsSearch" class="hidden {{ badge('secondary') }} bg-pink-500/10 text-pink-600 border-pink-500/30"></span>
+        <button onclick="clearPositionsFilters()" class="{{ button('outline', 'sm') }} text-destructive border-destructive/50 hover:bg-destructive/10">Clear All</button>
     </div>
 
     {% if positions_data %}
-    <!-- Portfolio Summary -->
-    <div class="stats shadow w-full">
-        <div class="stat">
-            <div class="stat-title">Open Positions</div>
-            <div class="stat-value" id="statTotalPositions">{{ open_count }}</div>
+    <!-- Stats Cards -->
+    <div class="grid gap-4 md:grid-cols-4">
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Open Positions</div>
+                <div class="{{ card_title() }} text-2xl" id="statTotalPositions">{{ open_count }}</div>
+            </div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">Long</div>
-            <div class="stat-value text-success">{{ long_count }}</div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Long</div>
+                <div class="{{ card_title() }} text-2xl text-success">{{ long_count }}</div>
+            </div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">Short</div>
-            <div class="stat-value text-error">{{ short_count }}</div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Short</div>
+                <div class="{{ card_title() }} text-2xl text-error">{{ short_count }}</div>
+            </div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">Total P&L</div>
-            <div id="statTotalPnl" data-pv="pnl" class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
-                ₹{{ "%.2f"|format(total_pnl) }}
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Total P&amp;L</div>
+                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+                    ₹{{ "%.2f"|format(total_pnl) }}
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Positions Table -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-            <div class="flex items-center justify-between flex-wrap gap-3">
-                <h2 class="card-title">
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-0') }}">
+            <div class="pt-3 pb-4 flex items-center justify-between flex-wrap gap-3">
+                <h2 class="font-semibold">
                     <span id="positionsCount">{{ positions_data|length }} position{{ '' if positions_data|length == 1 else 's' }}</span>
                 </h2>
                 <div class="relative w-full max-w-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    <input type="text" id="positionsSearch" placeholder="Search symbol..." class="input input-bordered input-sm w-full pl-9 pr-8" oninput="applyPositionsFilters()">
-                    <button type="button" id="positionsSearchClear" onclick="clearPositionsSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-base-content/50 hover:text-base-content">
+                    <input type="text" id="positionsSearch" placeholder="Search symbol..." class="{{ ui_input('pl-8 pr-8') }}" oninput="applyPositionsFilters()">
+                    <button type="button" id="positionsSearchClear" onclick="clearPositionsSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                         &times;
                     </button>
                 </div>
@@ -183,17 +201,28 @@
                             {% endif %}
                             <td class="font-semibold symbol-cell">
                                 {{ position.get('symbol', '') }}
-                                {% if is_closed %}<span class="badge badge-xs badge-ghost ml-1">Closed</span>{% endif %}
+                                {% if is_closed %}<span class="{{ badge('outline') }} ml-1">Closed</span>{% endif %}
                             </td>
-                            <td><span class="badge badge-sm badge-ghost">{{ position.get('exchange', '') }}</span></td>
-                            <td><span class="badge badge-sm badge-ghost">{{ position.get('product', '') }}</span></td>
+                            {# Not routed through badge('outline') - that variant hardcodes
+                               text-foreground, which would conflict with EXCHANGE_COLORS'
+                               own text-* class since Jinja string concat can't dedupe
+                               classes the way shadcn's cn()/twMerge does in the original. #}
+                            <td><span class="{{ BADGE_SHAPE }} {{ EXCHANGE_COLORS.get(position.get('exchange', ''), 'text-foreground border-border') }}">{{ position.get('exchange', '') }}</span></td>
+                            <td><span class="{{ BADGE_SHAPE }} {{ PRODUCT_COLORS.get(position.get('product', ''), 'text-foreground border-border') }}">{{ position.get('product', '') }}</span></td>
                             <td class="font-mono text-right qty-cell {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}" data-pv="qty">
                                 {{ position.get('quantity', 0) }}
                             </td>
                             <td class="font-mono text-right avgprice-cell" data-pv="avgprice">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
                             <td class="font-mono text-right ltp-cell">₹{{ "%.2f"|format(position.get('ltp', 0)|float) }}</td>
                             <td class="font-mono text-right pnl-cell {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
-                                ₹{{ "%.2f"|format(position.get('pnl', 0)|float) }}
+                                <div class="flex items-center justify-end gap-1">
+                                    {% if position.get('pnl', 0)|float >= 0 %}
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                                    {% else %}
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" /></svg>
+                                    {% endif %}
+                                    ₹{{ "%.2f"|format(position.get('pnl', 0)|float) }}
+                                </div>
                             </td>
                             <td class="text-right pnlpercent-cell {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
                                 {{ "%.2f"|format(position.get('pnl_percentage', 0)|float) }}%
@@ -202,7 +231,7 @@
                             <td class="text-right action-cell">
                                 {% if not is_closed %}
                                 <button type="button"
-                                        class="btn btn-ghost btn-xs text-error"
+                                        class="{{ button('ghost', 'icon-sm') }} text-destructive hover:text-destructive hover:bg-destructive/10"
                                         title="Close position"
                                         onclick="closeSinglePosition(this, {{ position.get('account_id') }}, '{{ position.get('symbol', '')|e }}', '{{ position.get('exchange', '')|e }}', '{{ position.get('product', '')|e }}')">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -210,7 +239,7 @@
                                     </svg>
                                 </button>
                                 {% else %}
-                                <span class="text-xs text-base-content/30">—</span>
+                                <span class="text-xs text-muted-foreground/50">—</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -227,13 +256,13 @@
 
     {% else %}
     <!-- No Positions -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body text-center py-16">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             <h2 class="text-2xl font-bold mb-2">No Open Positions</h2>
-            <p class="text-base-content/70 max-w-md mx-auto">
+            <p class="text-muted-foreground max-w-md mx-auto">
                 {% if accounts|length == 0 %}
                 You need to add a trading account first to view positions.
                 {% else %}
@@ -242,8 +271,8 @@
             </p>
             {% if accounts|length == 0 %}
             <div class="mt-6">
-                <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Add Account
