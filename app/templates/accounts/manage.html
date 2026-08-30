@@ -1,21 +1,22 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
+{% from 'macros/ui.html' import button %}
 
 {% block title %}Manage Accounts - AlgoMirror{% endblock %}
 
 {% block page_title %}Manage Accounts{% endblock %}
 
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">Manage Accounts</h1>
-    <div class="flex gap-2">
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <h1 class="text-3xl font-bold tracking-tight">Manage Accounts</h1>
+    <div class="flex gap-2 flex-wrap">
         {% if accounts %}
-        <button onclick="document.getElementById('panic-modal').showModal()" class="btn btn-error">
+        <button onclick="document.getElementById('panic-modal').showModal()" class="{{ button('destructive') }}">
             Close All Positions
         </button>
         {% endif %}
-        <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
             Add Account
@@ -143,8 +144,8 @@
         <p class="text-base-content/70 mb-6">
             Start by adding your first OpenAlgo trading account to begin managing your portfolio.
         </p>
-        <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
             Add Your First Account
