@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, card, card_header, card_title, card_description, card_content %}
 
 {% block title %}Trade Book - AlgoMirror{% endblock %}
 
@@ -8,12 +9,13 @@
 
 {% block content %}
 {% set single_account = selected_account_ids|length == 1 %}
+{% set BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden' %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-3xl font-bold">Trade Book</h1>
-            <p class="text-base-content/70 mt-1">
+            <h1 class="text-3xl font-bold tracking-tight">Tradebook</h1>
+            <p class="text-muted-foreground">
                 {% if not selected_account_ids or selected_account_ids|length == accounts|length %}
                 Showing trades across all accounts
                 {% elif single_account %}
@@ -24,60 +26,64 @@
             </p>
         </div>
 
-        <div class="flex gap-2 items-center">
+        <div class="flex items-center gap-2 flex-wrap">
             <!-- Account Filter -->
             {{ account_filter(accounts, selected_account_ids, 'trading.tradebook') }}
 
-            <button onclick="location.reload()" class="btn btn-primary btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="location.reload()" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
             </button>
 
-            <button onclick="exportToCSV('tradebook')" class="btn btn-success btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="exportToCSV('tradebook')" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Export CSV
+                Export
             </button>
         </div>
     </div>
 
     {% if tradebook_data %}
+    {% set buy_count = tradebook_data | selectattr('action', 'equalto', 'BUY') | list | length %}
+    {% set sell_count = tradebook_data | selectattr('action', 'equalto', 'SELL') | list | length %}
     <!-- Total P&L Summary -->
-    <div class="stats shadow w-full">
-        <div class="stat">
-            <div class="stat-title">Total Trades</div>
-            <div class="stat-value">{{ tradebook_data|length }}</div>
+    <div class="grid gap-4 md:grid-cols-4">
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Total Trades</div>
+                <div class="{{ card_title() }} text-2xl">{{ tradebook_data|length }}</div>
+            </div>
         </div>
-        
-        {% set buy_count = tradebook_data | selectattr('action', 'equalto', 'BUY') | list | length %}
-        {% set sell_count = tradebook_data | selectattr('action', 'equalto', 'SELL') | list | length %}
-        
-        <div class="stat">
-            <div class="stat-title">Buy Trades</div>
-            <div class="stat-value text-success">{{ buy_count }}</div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Buy Trades</div>
+                <div class="{{ card_title() }} text-2xl text-success">{{ buy_count }}</div>
+            </div>
         </div>
-        
-        <div class="stat">
-            <div class="stat-title">Sell Trades</div>
-            <div class="stat-value text-error">{{ sell_count }}</div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Sell Trades</div>
+                <div class="{{ card_title() }} text-2xl text-error">{{ sell_count }}</div>
+            </div>
         </div>
-        
-        <div class="stat">
-            <div class="stat-title">Net P&L</div>
-            <div class="stat-value {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
-                ₹{{ "%.2f"|format(total_pnl) }}
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Net P&amp;L</div>
+                <div class="{{ card_title() }} text-2xl {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+                    ₹{{ "%.2f"|format(total_pnl) }}
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Trades Table -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-            <h2 class="card-title">Executed Trades</h2>
-            
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-6') }}">
+            <h2 class="font-semibold mb-3">Executed Trades</h2>
+
             <div class="overflow-x-auto">
                 <table class="table table-sm">
                     <thead>
@@ -114,7 +120,7 @@
                             <td class="font-semibold">{{ trade.symbol }}</td>
                             <td>{{ trade.exchange }}</td>
                             <td>
-                                <span class="badge {{ 'badge-success' if trade.action == 'BUY' else 'badge-error' }} badge-sm">
+                                <span class="{{ BADGE_SHAPE }} {{ 'bg-success/20 text-success border-success/30' if trade.action == 'BUY' else 'bg-error/20 text-error border-error/30' }}">
                                     {{ trade.action }}
                                 </span>
                             </td>
@@ -133,13 +139,13 @@
     
     {% else %}
     <!-- No Trades -->
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body text-center py-16">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-base-content/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             <h2 class="text-2xl font-bold mb-2">No Trades Found</h2>
-            <p class="text-base-content/70 max-w-md mx-auto">
+            <p class="text-muted-foreground max-w-md mx-auto">
                 {% if accounts|length == 0 %}
                 You need to add a trading account first to view trades.
                 {% else %}
@@ -148,8 +154,8 @@
             </p>
             {% if accounts|length == 0 %}
             <div class="mt-6">
-                <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Add Account
