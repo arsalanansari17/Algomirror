@@ -1,0 +1,67 @@
+{#
+Shadcn-equivalent class-string macros, ported from OpenAlgo's own component
+source (app/components/ui/*.tsx) so buttons/cards/badges/inputs are
+pixel-faithful rather than approximated through DaisyUI's differently-
+designed .btn/.card classes. Each macro returns a class string to drop into
+a plain HTML element - Jinja has no clean equivalent of a React component
+wrapping arbitrary children, so callers write the tag themselves:
+<button class="{{ ui.button() }}">Save</button>
+
+Two deliberate departures from the original shadcn source:
+- `dark:` variants are dropped - AlgoMirror switches themes via a
+  `data-theme` attribute (see theme.js), not Tailwind's own `dark:` class/
+  media-query variant, so those classes would silently respond to OS
+  color-scheme instead of the app's toggle.
+- A few bracket-heavy arbitrary variants (`has-[>svg]:px-3`,
+  `[&_svg:not([class*='size-'])]:size-4`, `ring-[3px]`) are dropped in
+  favor of plain equivalents (ring-2) - SVG auto-sizing is moot anyway
+  since every icon macro in macros/icons.html already takes an explicit
+  size class at the call site. `shadow-xs` doesn't exist pre-Tailwind-v4
+  (this project is on 3.4), so `shadow-sm` stands in for it.
+
+Token names use the oaprimary/oasecondary/oaaccent prefix (not shadcn's
+bare primary/secondary/accent) because those bare names are already
+DaisyUI's own theme-color slots - see tailwind.config.js.
+#}
+
+{% macro button(variant='default', size='default', class='') %}
+{%- set base = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/50" -%}
+{%- set variants = {
+    'default': 'bg-oaprimary text-oaprimary-foreground hover:bg-oaprimary/90',
+    'destructive': 'bg-destructive text-white hover:bg-destructive/90',
+    'outline': 'border border-border bg-background shadow-sm hover:bg-oaaccent hover:text-oaaccent-foreground',
+    'secondary': 'bg-oasecondary text-oasecondary-foreground hover:bg-oasecondary/80',
+    'ghost': 'hover:bg-oaaccent hover:text-oaaccent-foreground',
+    'link': 'text-oaprimary underline-offset-4 hover:underline',
+} -%}
+{%- set sizes = {
+    'default': 'h-9 px-4 py-2',
+    'sm': 'h-8 rounded-md gap-1.5 px-3',
+    'lg': 'h-10 rounded-md px-6',
+    'icon': 'size-9',
+    'icon-sm': 'size-8',
+} -%}
+{{- (base ~ ' ' ~ variants.get(variant, variants['default']) ~ ' ' ~ sizes.get(size, sizes['default']) ~ ' ' ~ class) | trim -}}
+{% endmacro %}
+
+{% macro badge(variant='default', class='') %}
+{%- set base = "inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden" -%}
+{%- set variants = {
+    'default': 'border-transparent bg-oaprimary text-oaprimary-foreground',
+    'secondary': 'border-transparent bg-oasecondary text-oasecondary-foreground',
+    'destructive': 'border-transparent bg-destructive text-white',
+    'outline': 'border-border text-foreground',
+} -%}
+{{- (base ~ ' ' ~ variants.get(variant, variants['default']) ~ ' ' ~ class) | trim -}}
+{% endmacro %}
+
+{% macro card(class='') %}{{- ('bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border py-6 shadow-sm ' ~ class) | trim -}}{% endmacro %}
+{% macro card_header(class='') %}{{- ('flex flex-col gap-2 px-6 ' ~ class) | trim -}}{% endmacro %}
+{% macro card_title(class='') %}{{- ('leading-none font-semibold ' ~ class) | trim -}}{% endmacro %}
+{% macro card_description(class='') %}{{- ('text-muted-foreground text-sm ' ~ class) | trim -}}{% endmacro %}
+{% macro card_content(class='') %}{{- ('px-6 ' ~ class) | trim -}}{% endmacro %}
+{% macro card_footer(class='') %}{{- ('flex items-center px-6 ' ~ class) | trim -}}{% endmacro %}
+
+{% macro input(class='') %}
+{{- ("placeholder:text-muted-foreground selection:bg-oaprimary selection:text-oaprimary-foreground border-border h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-sm transition-colors outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:ring-2 focus-visible:ring-ring/50 " ~ class) | trim -}}
+{% endmacro %}

@@ -60,6 +60,45 @@ module.exports = {
           dark: '#d32f2f',
           glow: 'rgba(239, 83, 80, 0.3)',
         },
+        /* shadcn-equivalent tokens, verified against OpenAlgo's real rendered
+           computed styles (not its dead legacy CSS block - see
+           project_algomirror_ui_redesign_plan.md) so Button/Card/Badge/Input
+           can be ported using OpenAlgo's exact utility class strings.
+           <alpha-value> lets bg-primary/50 etc. work like Tailwind's own
+           color opacity modifiers. */
+        background: 'oklch(var(--background) / <alpha-value>)',
+        foreground: 'oklch(var(--foreground) / <alpha-value>)',
+        card: {
+          DEFAULT: 'oklch(var(--card) / <alpha-value>)',
+          foreground: 'oklch(var(--card-foreground) / <alpha-value>)',
+        },
+        popover: {
+          DEFAULT: 'oklch(var(--popover) / <alpha-value>)',
+          foreground: 'oklch(var(--popover-foreground) / <alpha-value>)',
+        },
+        oaprimary: {
+          DEFAULT: 'oklch(var(--oa-primary) / <alpha-value>)',
+          foreground: 'oklch(var(--oa-primary-foreground) / <alpha-value>)',
+        },
+        oasecondary: {
+          DEFAULT: 'oklch(var(--oa-secondary) / <alpha-value>)',
+          foreground: 'oklch(var(--oa-secondary-foreground) / <alpha-value>)',
+        },
+        muted: {
+          DEFAULT: 'oklch(var(--muted) / <alpha-value>)',
+          foreground: 'oklch(var(--muted-foreground) / <alpha-value>)',
+        },
+        oaaccent: {
+          DEFAULT: 'oklch(var(--oa-accent) / <alpha-value>)',
+          foreground: 'oklch(var(--oa-accent-foreground) / <alpha-value>)',
+        },
+        destructive: {
+          DEFAULT: 'oklch(var(--destructive) / <alpha-value>)',
+          foreground: 'oklch(var(--destructive-foreground) / <alpha-value>)',
+        },
+        border: 'oklch(var(--oa-border) / <alpha-value>)',
+        input: 'oklch(var(--oa-input) / <alpha-value>)',
+        ring: 'oklch(var(--oa-ring) / <alpha-value>)',
       },
       fontFamily: {
         'mono': ['JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'monospace'],
@@ -116,50 +155,79 @@ module.exports = {
   daisyui: {
     themes: [
       {
-        /* Light Theme - Keep unchanged */
+        /* Light theme - verified against OpenAlgo's real rendered computed
+           styles (see the note in src/input.css), not the dead legacy
+           Bloomberg-terminal color block. info/warning reuse OpenAlgo's own
+           real "buy"/"sell" semantic tokens rather than inventing new hues;
+           success/error reuse its real "profit"/"destructive" tokens. */
         light: {
-          "primary": "#3ECF8E",
-          "primary-content": "#ffffff",
-          "secondary": "#7c3aed",
-          "secondary-content": "#ffffff",
-          "accent": "#f59e0b",
-          "accent-content": "#ffffff",
-          "neutral": "#71717a",
-          "neutral-content": "#ffffff",
-          "base-100": "#ffffff",
-          "base-200": "#fafafa",
-          "base-300": "#f4f4f5",
-          "base-content": "#18181b",
-          "info": "#3b82f6",
+          "primary": "oklch(0.205 0 0)",
+          "primary-content": "oklch(0.985 0 0)",
+          "secondary": "oklch(0.97 0 0)",
+          "secondary-content": "oklch(0.205 0 0)",
+          "accent": "oklch(0.97 0 0)",
+          "accent-content": "oklch(0.205 0 0)",
+          "neutral": "oklch(0.556 0 0)",
+          "neutral-content": "oklch(0.985 0 0)",
+          "base-100": "oklch(1 0 0)",
+          "base-200": "oklch(0.97 0 0)",
+          "base-300": "oklch(0.922 0 0)",
+          "base-content": "oklch(0.145 0 0)",
+          "info": "hsl(217 91% 60%)",       /* OpenAlgo's real --buy token */
           "info-content": "#ffffff",
-          "success": "#10b981",
+          "success": "hsl(142 76% 36%)",    /* OpenAlgo's real --profit token */
           "success-content": "#ffffff",
-          "warning": "#f59e0b",
+          "warning": "hsl(25 95% 53%)",     /* OpenAlgo's real --sell token */
           "warning-content": "#ffffff",
-          "error": "#ef4444",
+          "error": "oklch(0.577 0.245 27.325)", /* OpenAlgo's real --destructive token */
           "error-content": "#ffffff",
         },
-        /* Dark Theme - Trading Terminal Style */
+        /* Dark theme - same verification as light. */
         dark: {
-          "primary": "#00d4ff",           /* Cyan - Bloomberg terminal accent */
-          "primary-content": "#0a0a0c",
-          "secondary": "#a78bfa",         /* Soft purple for secondary actions */
-          "secondary-content": "#0a0a0c",
-          "accent": "#fbbf24",            /* Amber for highlights */
-          "accent-content": "#0a0a0c",
-          "neutral": "#1e222d",           /* Panel borders */
-          "neutral-content": "#d1d4dc",
-          "base-100": "#0d0e12",          /* Deepest black - main background */
-          "base-200": "#12141a",          /* Slightly lighter - card backgrounds */
-          "base-300": "#161922",          /* Panel backgrounds */
-          "base-content": "#d1d4dc",      /* Light gray text */
-          "info": "#2196f3",              /* Bright blue for info */
+          "primary": "oklch(0.922 0 0)",
+          "primary-content": "oklch(0.205 0 0)",
+          "secondary": "oklch(0.269 0 0)",
+          "secondary-content": "oklch(0.985 0 0)",
+          "accent": "oklch(0.269 0 0)",
+          "accent-content": "oklch(0.985 0 0)",
+          "neutral": "oklch(0.708 0 0)",
+          "neutral-content": "oklch(0.145 0 0)",
+          "base-100": "oklch(0.145 0 0)",
+          "base-200": "oklch(0.205 0 0)",
+          "base-300": "oklch(0.269 0 0)",
+          "base-content": "oklch(0.985 0 0)",
+          "info": "hsl(217 91% 65%)",
           "info-content": "#0a0a0c",
-          "success": "#26a69a",           /* Teal green - profit color */
+          "success": "hsl(142 69% 58%)",
           "success-content": "#0a0a0c",
-          "warning": "#ff9800",           /* Orange warning */
+          "warning": "hsl(25 95% 63%)",
           "warning-content": "#0a0a0c",
-          "error": "#ef5350",             /* Red - loss color */
+          "error": "oklch(0.704 0.191 22.216)",
+          "error-content": "#ffffff",
+        },
+        /* Analyzer/paper-trading theme - matches Kotak's Analyzer mode (a
+           real per-account state, see project_acc3_iqbal_kotak_setup.md),
+           not just decorative parity. */
+        analyzer: {
+          "primary": "oklch(0.7 0.2 280)",
+          "primary-content": "oklch(0.98 0 0)",
+          "secondary": "oklch(0.28 0.03 280)",
+          "secondary-content": "oklch(0.95 0.02 280)",
+          "accent": "oklch(0.28 0.03 280)",
+          "accent-content": "oklch(0.95 0.02 280)",
+          "neutral": "oklch(0.7 0.03 280)",
+          "neutral-content": "oklch(0.16 0.02 280)",
+          "base-100": "oklch(0.16 0.02 280)",
+          "base-200": "oklch(0.2 0.025 280)",
+          "base-300": "oklch(0.28 0.03 280)",
+          "base-content": "oklch(0.95 0.02 280)",
+          "info": "hsl(217 91% 65%)",
+          "info-content": "#0a0a0c",
+          "success": "hsl(142 69% 58%)",
+          "success-content": "#0a0a0c",
+          "warning": "hsl(25 95% 63%)",
+          "warning-content": "#0a0a0c",
+          "error": "oklch(0.65 0.2 25)",
           "error-content": "#ffffff",
         },
       },

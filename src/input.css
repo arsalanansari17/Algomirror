@@ -8,6 +8,92 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 /* ============================================
+   OPENALGO PARITY TOKENS
+   ============================================
+   Raw oklch triplets (no wrapping oklch()) so Tailwind's <alpha-value>
+   pattern in tailwind.config.js works for opacity modifiers (bg-oaprimary/90
+   etc), mirroring shadcn's own convention. Values are the REAL computed
+   styles read from a live OpenAlgo instance - its checked-in index.css has
+   an old, dead HSL "Bloomberg terminal" color block earlier in the file
+   that a later unlayered :root/.dark block silently overrides via CSS
+   cascade layers (unlayered always beats layered, regardless of source
+   order) - see project_algomirror_ui_redesign_plan.md. Do not "restore"
+   the colorful values from that dead block; they are not what OpenAlgo
+   actually renders. */
+[data-theme="light"], :root {
+    --background: 1 0 0;
+    --foreground: 0.145 0 0;
+    --card: 1 0 0;
+    --card-foreground: 0.145 0 0;
+    --popover: 1 0 0;
+    --popover-foreground: 0.145 0 0;
+    --oa-primary: 0.205 0 0;
+    --oa-primary-foreground: 0.985 0 0;
+    --oa-secondary: 0.97 0 0;
+    --oa-secondary-foreground: 0.205 0 0;
+    --muted: 0.97 0 0;
+    --muted-foreground: 0.556 0 0;
+    --oa-accent: 0.97 0 0;
+    --oa-accent-foreground: 0.205 0 0;
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 0.985 0 0;
+    --oa-border: 0.922 0 0;
+    --oa-input: 0.922 0 0;
+    --oa-ring: 0.708 0 0;
+}
+
+[data-theme="dark"] {
+    --background: 0.145 0 0;
+    --foreground: 0.985 0 0;
+    --card: 0.205 0 0;
+    --card-foreground: 0.985 0 0;
+    --popover: 0.205 0 0;
+    --popover-foreground: 0.985 0 0;
+    --oa-primary: 0.922 0 0;
+    --oa-primary-foreground: 0.205 0 0;
+    --oa-secondary: 0.269 0 0;
+    --oa-secondary-foreground: 0.985 0 0;
+    --muted: 0.269 0 0;
+    --muted-foreground: 0.708 0 0;
+    --oa-accent: 0.269 0 0;
+    --oa-accent-foreground: 0.985 0 0;
+    --destructive: 0.704 0.191 22.216;
+    --destructive-foreground: 0.985 0 0;
+    /* OpenAlgo's real dark border/input are translucent whites
+       (oklch(1 0 0 / 10%) / 15%) - approximated as solid dark grays here
+       since embedding a slash-alpha in the variable would break the
+       <alpha-value> opacity-modifier pattern used everywhere else. */
+    --oa-border: 0.3 0 0;
+    --oa-input: 0.35 0 0;
+    --oa-ring: 0.556 0 0;
+}
+
+/* Analyzer/paper-trading theme - matches Kotak's Analyzer/sandbox mode
+   (see project_acc3_iqbal_kotak_setup.md), a real per-account state, not
+   just decorative theme parity. */
+[data-theme="analyzer"] {
+    --background: 0.16 0.02 280;
+    --foreground: 0.95 0.02 280;
+    --card: 0.2 0.025 280;
+    --card-foreground: 0.95 0.02 280;
+    --popover: 0.2 0.025 280;
+    --popover-foreground: 0.95 0.02 280;
+    --oa-primary: 0.7 0.2 280;
+    --oa-primary-foreground: 0.98 0 0;
+    --oa-secondary: 0.28 0.03 280;
+    --oa-secondary-foreground: 0.95 0.02 280;
+    --muted: 0.28 0.025 280;
+    --muted-foreground: 0.7 0.03 280;
+    --oa-accent: 0.28 0.03 280;
+    --oa-accent-foreground: 0.95 0.02 280;
+    --destructive: 0.65 0.2 25;
+    --destructive-foreground: 0.98 0 0;
+    --oa-border: 0.35 0.04 280;
+    --oa-input: 0.35 0.04 280;
+    --oa-ring: 0.7 0.2 280;
+}
+
+/* ============================================
    BASE STYLES
    ============================================ */
 
