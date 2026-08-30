@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, card, card_header, card_title, card_description, card_content %}
 
 {# Macro to format amount in Lakhs if >= 1L, otherwise show actual #}
 {% macro format_lakhs(amount) %}{% if amount >= 100000 %}{{ "%.2fL"|format(amount / 100000) }}{% else %}{{ "{:,.2f}".format(amount) }}{% endif %}{% endmacro %}
@@ -13,10 +14,10 @@
 {% set single_account = selected_account_ids|length == 1 %}
 <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-3xl font-bold">Funds Overview</h1>
-            <p class="text-base-content/70 mt-1">
+            <h1 class="text-3xl font-bold tracking-tight">Funds Overview</h1>
+            <p class="text-muted-foreground">
                 {% if not selected_account_ids or selected_account_ids|length == accounts|length %}
                 Showing funds across all accounts
                 {% elif single_account %}
@@ -27,12 +28,12 @@
             </p>
         </div>
 
-        <div class="flex gap-2 items-center">
+        <div class="flex items-center gap-2 flex-wrap">
             <!-- Account Filter -->
             {{ account_filter(accounts, selected_account_ids, 'trading.funds') }}
 
-            <button onclick="refreshFundsData()" class="btn btn-primary btn-sm h-9">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="refreshFundsData()" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
@@ -43,35 +44,39 @@
     {% if funds_data %}
     <!-- Summary Cards -->
     {% if not single_account %}
-    <div class="stats shadow w-full">
-        {% set total_available = funds_data | map(attribute='availablecash') | map('float') | sum %}
-        {% set total_m2m_realized = funds_data | map(attribute='m2mrealized') | map('float') | sum %}
-        {% set total_m2m_unrealized = funds_data | map(attribute='m2munrealized') | map('float') | sum %}
-        {% set total_used_debits = funds_data | map(attribute='utiliseddebits') | map('float') | sum %}
-
-        <div class="stat">
-            <div class="stat-title">Total Available Cash</div>
-            <div class="stat-value text-primary" data-pv="value">₹{{ format_lakhs(total_available) }}</div>
-            <div class="stat-desc">Across {{ funds_data|length }} accounts</div>
-        </div>
-
-        <div class="stat">
-            <div class="stat-title">M2M Realized</div>
-            <div class="stat-value {{ 'text-success' if total_m2m_realized >= 0 else 'text-error' }}" data-pv="pnl">
-                ₹{{ "%.2f"|format(total_m2m_realized) }}
+    {% set total_available = funds_data | map(attribute='availablecash') | map('float') | sum %}
+    {% set total_m2m_realized = funds_data | map(attribute='m2mrealized') | map('float') | sum %}
+    {% set total_m2m_unrealized = funds_data | map(attribute='m2munrealized') | map('float') | sum %}
+    {% set total_used_debits = funds_data | map(attribute='utiliseddebits') | map('float') | sum %}
+    <div class="grid gap-4 md:grid-cols-4">
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Total Available Cash</div>
+                <div class="{{ card_title() }} text-2xl text-oaprimary" data-pv="value">₹{{ format_lakhs(total_available) }}</div>
+                <div class="{{ card_description() }} text-xs">Across {{ funds_data|length }} accounts</div>
             </div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">M2M Unrealized</div>
-            <div class="stat-value {{ 'text-success' if total_m2m_unrealized >= 0 else 'text-error' }}" data-pv="pnl">
-                ₹{{ "%.2f"|format(total_m2m_unrealized) }}
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">M2M Realized</div>
+                <div class="{{ card_title() }} text-2xl {{ 'text-success' if total_m2m_realized >= 0 else 'text-error' }}" data-pv="pnl">
+                    ₹{{ "%.2f"|format(total_m2m_realized) }}
+                </div>
             </div>
         </div>
-
-        <div class="stat">
-            <div class="stat-title">Used Debits</div>
-            <div class="stat-value text-warning" data-pv="value">₹{{ format_lakhs(total_used_debits) }}</div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">M2M Unrealized</div>
+                <div class="{{ card_title() }} text-2xl {{ 'text-success' if total_m2m_unrealized >= 0 else 'text-error' }}" data-pv="pnl">
+                    ₹{{ "%.2f"|format(total_m2m_unrealized) }}
+                </div>
+            </div>
+        </div>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Used Debits</div>
+                <div class="{{ card_title() }} text-2xl text-warning" data-pv="value">₹{{ format_lakhs(total_used_debits) }}</div>
+            </div>
         </div>
     </div>
     {% endif %}
@@ -79,47 +84,46 @@
     <!-- Funds Details -->
     <div class="grid grid-cols-1 {{ 'lg:grid-cols-1' if single_account else 'lg:grid-cols-2' }} gap-6">
         {% for fund in funds_data %}
-        <div class="card bg-base-100 shadow-xl">
-            <div class="card-body">
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-6') }}">
                 <div class="flex justify-between items-start">
                     <div class="flex items-center gap-3">
                         {{ account_dot(fund.account_id, fund.account_name + ' · ' + fund.broker) }}
                         <div data-pv="account">
-                            <h2 class="card-title">{{ fund.account_name }}</h2>
-                            <p class="text-sm opacity-70">{{ fund.broker }}</p>
+                            <h2 class="font-semibold">{{ fund.account_name }}</h2>
+                            <p class="text-sm text-muted-foreground">{{ fund.broker }}</p>
                         </div>
                     </div>
                     {% if single_account %}
-                    <button onclick="refreshSingleAccount({{ fund.account_id }})" class="btn btn-ghost btn-sm btn-circle">
+                    <button onclick="refreshSingleAccount({{ fund.account_id }})" class="{{ button('ghost', 'icon-sm') }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
                     {% endif %}
                 </div>
-                
-                <div class="divider"></div>
-                
+
+                <div class="border-t border-border my-4"></div>
+
                 <!-- Available Cash -->
-                <div class="stat {{ 'bg-transparent p-0' if single_account else 'bg-base-200' }}">
-                    <div class="stat-title {{ 'text-base' if single_account }}">Available Cash</div>
-                    <div class="stat-value text-primary {{ 'text-2xl' if single_account }}" data-pv="value">
+                <div class="{{ '' if single_account else 'bg-muted rounded-lg p-4' }}">
+                    <div class="{{ card_description() }} {{ 'text-base' if single_account }}">Available Cash</div>
+                    <div class="{{ card_title() }} text-oaprimary {{ 'text-2xl' if single_account else 'text-xl' }}" data-pv="value">
                         ₹{{ format_lakhs(fund.availablecash|float) }}
                     </div>
                 </div>
 
                 <!-- P&L Section -->
                 <div class="grid grid-cols-2 gap-4 mt-4">
-                    <div class="stat bg-base-200">
-                        <div class="stat-title">Realized P&L</div>
-                        <div class="stat-value {{ 'text-success' if fund.m2mrealized|float >= 0 else 'text-error' }} text-lg" data-pv="pnl">
+                    <div class="bg-muted rounded-lg p-4">
+                        <div class="{{ card_description() }}">Realized P&amp;L</div>
+                        <div class="{{ card_title() }} text-lg {{ 'text-success' if fund.m2mrealized|float >= 0 else 'text-error' }}" data-pv="pnl">
                             ₹{{ "%.2f"|format(fund.m2mrealized|float) }}
                         </div>
                     </div>
-
-                    <div class="stat bg-base-200">
-                        <div class="stat-title">Unrealized P&L</div>
-                        <div class="stat-value {{ 'text-success' if fund.m2munrealized|float >= 0 else 'text-error' }} text-lg" data-pv="pnl">
+                    <div class="bg-muted rounded-lg p-4">
+                        <div class="{{ card_description() }}">Unrealized P&amp;L</div>
+                        <div class="{{ card_title() }} text-lg {{ 'text-success' if fund.m2munrealized|float >= 0 else 'text-error' }}" data-pv="pnl">
                             ₹{{ "%.2f"|format(fund.m2munrealized|float) }}
                         </div>
                     </div>
@@ -127,19 +131,19 @@
 
                 <!-- Used Debits -->
                 {% if fund.utiliseddebits and fund.utiliseddebits|float > 0 %}
-                <div class="stat bg-base-200 mt-4">
-                    <div class="stat-title">Used Debits</div>
-                    <div class="stat-value text-warning text-lg" data-pv="value">
+                <div class="bg-muted rounded-lg p-4 mt-4">
+                    <div class="{{ card_description() }}">Used Debits</div>
+                    <div class="{{ card_title() }} text-lg text-warning" data-pv="value">
                         ₹{{ format_lakhs(fund.utiliseddebits|float) }}
                     </div>
                 </div>
                 {% endif %}
-                
+
                 <!-- Total P&L Summary -->
                 {% set total_pnl = (fund.m2mrealized|float) + (fund.m2munrealized|float) %}
-                <div class="divider"></div>
+                <div class="border-t border-border my-4"></div>
                 <div class="flex justify-between items-center">
-                    <span class="font-semibold">Total P&L:</span>
+                    <span class="font-semibold">Total P&amp;L:</span>
                     <span class="font-bold text-lg {{ 'text-success' if total_pnl >= 0 else 'text-error' }}" data-pv="pnl">
                         ₹{{ "%.2f"|format(total_pnl) }}
                     </span>
@@ -153,11 +157,11 @@
     <!-- No Funds Data -->
     <div class="text-center py-12">
         <div class="max-w-md mx-auto">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
             </svg>
             <h2 class="text-2xl font-bold mb-2">No funds data available</h2>
-            <p class="text-base-content/70 mb-6">
+            <p class="text-muted-foreground mb-6">
                 {% if accounts|length == 0 %}
                 You need to add a trading account first.
                 {% else %}
@@ -165,15 +169,15 @@
                 {% endif %}
             </p>
             {% if accounts|length == 0 %}
-            <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
                 Add Account
             </a>
             {% else %}
-            <button onclick="refreshFundsData()" class="btn btn-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <button onclick="refreshFundsData()" class="{{ button('default') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh Data
