@@ -1,36 +1,37 @@
 {% extends "layout.html" %}
 {% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, card, card_content %}
 
 {% block title %}P&L Plot - AlgoMirror{% endblock %}
 
 {% block content %}
 <div id="pnlCurvePageWrap" class="space-y-4">
     <!-- Header -->
-    <div class="flex justify-between items-center flex-wrap gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 id="pnlCurveTitle" class="text-3xl font-bold">{{ "Combined Intraday P&L Plot" if accounts|length > 1 else "Intraday P&L Plot" }}</h1>
-            <p id="pnlCurveSubtitle" class="text-base-content/70 mt-1">
+            <h1 id="pnlCurveTitle" class="text-3xl font-bold tracking-tight">{{ "Combined Intraday P&L Plot" if accounts|length > 1 else "Intraday P&L Plot" }}</h1>
+            <p id="pnlCurveSubtitle" class="text-muted-foreground">
                 {{ "Mark-to-market curve summed across all active accounts, today only." if accounts|length > 1 else "Mark-to-market curve for today." }}
             </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 flex-wrap">
             {{ account_filter(accounts, [], 'trading.pnl_curve_page', on_change_js='onPnlAccountFilterChange') }}
-            <span id="pnlCurveUpdatedAt" class="text-xs text-base-content/50"></span>
+            <span id="pnlCurveUpdatedAt" class="text-xs text-muted-foreground"></span>
             {% if accounts %}
-            <button type="button" id="pnlCurveScreenshotBtn" onclick="takePnlScreenshot()" class="btn btn-outline btn-sm">
+            <button type="button" id="pnlCurveScreenshotBtn" onclick="takePnlScreenshot()" class="{{ button('outline', 'sm') }}">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 Screenshot
             </button>
-            <button type="button" id="pnlCurveShareBtn" onclick="openPnlShareModal()" class="btn btn-outline btn-sm">
+            <button type="button" id="pnlCurveShareBtn" onclick="openPnlShareModal()" class="{{ button('outline', 'sm') }}">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 8.632a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
                 </svg>
                 Share
             </button>
-            <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="btn btn-primary btn-sm">
+            <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="{{ button('outline', 'sm') }}">
                 <svg id="pnlCurveRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
@@ -41,12 +42,12 @@
     </div>
 
     {% if not accounts %}
-    <div class="card bg-base-100 shadow-xl">
-        <div class="card-body text-center py-16">
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
             <h2 class="text-2xl font-bold mb-2">No Active Accounts</h2>
-            <p class="text-base-content/70">Add a trading account to see its intraday P&amp;L here.</p>
+            <p class="text-muted-foreground">Add a trading account to see its intraday P&amp;L here.</p>
             <div class="mt-6">
-                <a href="{{ url_for('accounts.add') }}" class="btn btn-primary">Add Account</a>
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">Add Account</a>
             </div>
         </div>
     </div>
@@ -60,20 +61,20 @@
     <div id="pnlCurveFailedAccountsWarning" class="hidden alert alert-warning"></div>
 
     <div id="pnlCurveContent" class="hidden">
-        <div class="card bg-base-100 shadow-xl">
-            <div class="card-body">
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-6') }}">
                 <!-- Stat row: bordered cards + icons, matching OpenAlgo's
                      own PnL Tracker card layout (frontend/src/pages/
                      PnLTracker.tsx) rather than AlgoTest's plain-text
                      convention. Branding lives in the chart itself as a
                      centered watermark (see drawPnlChart). -->
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                    <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100 shadow-sm">
-                        <div class="text-xs text-base-content/60">Current MTM</div>
+                    <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
+                        <div class="text-xs text-muted-foreground">Current MTM</div>
                         <div id="pnlCurveCurrent" class="text-4xl font-bold font-mono"></div>
                     </div>
-                    <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100 shadow-sm">
-                        <div class="text-xs text-base-content/60 flex items-center gap-1">
+                    <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
+                        <div class="text-xs text-muted-foreground flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" style="color:#22c55e" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 18L9 11.25l4.306 4.306a11.95 11.95 0 015.814-5.518l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941" />
                             </svg>
@@ -81,11 +82,11 @@
                         </div>
                         <div class="flex items-center gap-1.5">
                             <span id="pnlCurveMax" class="text-4xl font-bold font-mono" style="color:#22c55e"></span>
-                            <span id="pnlCurveMaxTime" class="text-xs text-base-content/50"></span>
+                            <span id="pnlCurveMaxTime" class="text-xs text-muted-foreground"></span>
                         </div>
                     </div>
-                    <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100 shadow-sm">
-                        <div class="text-xs text-base-content/60 flex items-center gap-1">
+                    <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
+                        <div class="text-xs text-muted-foreground flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" style="color:#ef4444" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 6L9 12.75l4.306-4.306a11.95 11.95 0 015.814 5.518l2.74 1.22m0 0l-5.94 2.28m5.94-2.28l-2.28-5.941" />
                             </svg>
@@ -93,25 +94,25 @@
                         </div>
                         <div class="flex items-center gap-1.5">
                             <span id="pnlCurveMin" class="text-4xl font-bold font-mono" style="color:#ef4444"></span>
-                            <span id="pnlCurveMinTime" class="text-xs text-base-content/50"></span>
+                            <span id="pnlCurveMinTime" class="text-xs text-muted-foreground"></span>
                         </div>
                     </div>
-                    <div class="border border-base-300 rounded-lg px-4 py-2.5 bg-base-100 shadow-sm">
-                        <div class="text-xs text-base-content/60 flex items-center gap-1">
+                    <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
+                        <div class="text-xs text-muted-foreground flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" style="color:#f59e0b" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                             </svg>
                             Max Drawdown
                         </div>
                         <div id="pnlCurveDrawdown" class="text-4xl font-bold font-mono" style="color:#f59e0b"></div>
-                        <div class="text-xs text-base-content/50">Peak to trough</div>
+                        <div class="text-xs text-muted-foreground">Peak to trough</div>
                     </div>
                 </div>
 
-                <div id="pnlCurveLegend" class="flex items-center justify-center gap-4 text-sm text-base-content/60 mb-2"></div>
+                <div id="pnlCurveLegend" class="flex items-center justify-center gap-4 text-sm text-muted-foreground mb-2"></div>
                 <div id="pnlCurveChartWrap" class="w-full relative">
                     <div id="pnlCurveChart" class="w-full" style="height: calc(100vh - 380px); min-height: 420px;"></div>
-                    <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-base-300 bg-base-100 text-xs p-2 space-y-0.5"></div>
+                    <div id="pnlCurveTooltip" class="hidden absolute z-10 pointer-events-none rounded-lg shadow-lg border border-border bg-card text-xs p-2 space-y-0.5"></div>
                 </div>
             </div>
         </div>
