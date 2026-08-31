@@ -1,13 +1,14 @@
 {% extends "layout.html" %}
+{% from 'macros/ui.html' import button %}
 
 {% block title %}Option Chain - AlgoMirror{% endblock %}
 
 {% block content %}
 <div>
     <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">Option Chain</h1>
-        <div class="flex gap-2">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <h1 class="text-3xl font-bold tracking-tight">Option Chain</h1>
+        <div class="flex gap-2 flex-wrap">
             <select id="underlyingSelect" class="select select-bordered">
                 <option value="NIFTY" {% if underlying == 'NIFTY' %}selected{% endif %}>NIFTY</option>
                 <option value="BANKNIFTY" {% if underlying == 'BANKNIFTY' %}selected{% endif %}>BANKNIFTY</option>
@@ -20,9 +21,9 @@
                     {% endfor %}
                 {% endif %}
             </select>
-            <button class="btn btn-primary" onclick="refreshOptionChain()">
+            <button class="{{ button('default') }}" onclick="refreshOptionChain()">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
                     </path>
                 </svg>
