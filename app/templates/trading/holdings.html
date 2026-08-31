@@ -4,12 +4,26 @@
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
 {% from 'macros/icons.html' import accounts as icon_merge %}
 
+{# Matches OpenAlgo's own approach: one shared formatPercent()/formatCurrency()
+   helper reused everywhere, instead of repeating the "+" if x >= 0 else ""
+   sign-prefix logic inline at every call site (Holdings.tsx:53-55). #}
+{% macro signed_pct(value, undefined_text='0.00') %}{% if value is not defined or value is none %}{{ undefined_text }}%{% else %}{{ "+" if value >= 0 else "" }}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
+{% macro fmt_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}₹{{ "%.2f"|format(value) }}{% endif %}{% endmacro %}
+{% macro fmt_pct(value, undefined_text=none) %}{% if value is not defined or value is none %}{{ undefined_text if undefined_text is not none else "0.00%" }}{% else %}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
+
 {% block title %}Holdings - AlgoMirror{% endblock %}
 
 {% block page_title %}Holdings{% endblock %}
 
 {% block content %}
 {% set single_account = selected_account_ids|length == 1 %}
+{# Neutral shape, dynamic color set separately - matches OpenAlgo's own
+   Badge on Holdings' Day's P&L (bg-green-500/10 text-green-600 etc). Not
+   routed through badge('secondary') - that variant hardcodes a text
+   color, which JS's success/error toggle can't safely override (two
+   utility classes in the same category have no defined winner - see the
+   Positions merge-view fix for the same issue). #}
+{% set PNL_BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit' %}
 <datalist id="strategyNamesList">
     {% for name in strategy_names %}
     <option value="{{ name }}"></option>
@@ -82,31 +96,31 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Invested</div>
-                <div id="statInvested" data-pv="value" class="{{ card_title() }} text-2xl">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</div>
+                <div id="statInvested" data-pv="value" class="{{ card_title() }} text-2xl">{{ fmt_currency(statistics.totalinvvalue) }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Current</div>
-                <div id="statCurrent" data-pv="value" class="{{ card_title() }} text-2xl text-oaprimary">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</div>
+                <div id="statCurrent" data-pv="value" class="{{ card_title() }} text-2xl text-oaprimary">{{ fmt_currency(statistics.totalholdingvalue) }}</div>
             </div>
         </div>
         <div class="{{ card() }} {{ 'hidden' if statistics.totaldaypnl is not defined }}" id="statDayPnlWrap">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Day's P&amp;L</div>
                 <div id="statDayPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
-                    ₹{{ "%.2f"|format(statistics.totaldaypnl) if statistics.totaldaypnl is defined else "0.00" }}
+                    {{ fmt_currency(statistics.totaldaypnl) }}
                 </div>
-                <div id="statDayPnlPct" data-pv="pnl" class="text-sm {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' }}">{{ "+" if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totaldaypnlpercentage) if statistics.totaldaypnlpercentage is defined else "0.00" }}%</div>
+                <div id="statDayPnlPct" data-pv="pnl" class="{{ PNL_BADGE_SHAPE }} mt-1 {{ 'bg-green-500/10 text-green-600 border-green-500/30' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'bg-red-500/10 text-red-600 border-red-500/30' }}">{{ signed_pct(statistics.totaldaypnlpercentage) }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Total P&amp;L</div>
                 <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
-                    ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
+                    {{ fmt_currency(statistics.totalprofitandloss) }}
                 </div>
-                <div id="statTotalPnlPct" data-pv="pnl" class="text-sm {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}">{{ "+" if statistics.totalpnlpercentage >= 0 else "" }}{{ "%.2f"|format(statistics.totalpnlpercentage) }}%</div>
+                <div id="statTotalPnlPct" data-pv="pnl" class="{{ PNL_BADGE_SHAPE }} mt-1 {{ 'bg-green-500/10 text-green-600 border-green-500/30' if statistics.totalpnlpercentage >= 0 else 'bg-red-500/10 text-red-600 border-red-500/30' }}">{{ signed_pct(statistics.totalpnlpercentage) }}</div>
             </div>
         </div>
     </div>
@@ -147,6 +161,7 @@
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnlpercent')">P&L % <span class="sort-arrow" data-col="pnlpercent"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('daychangepercent')">Day Chg % <span class="sort-arrow" data-col="daychangepercent"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('allocation')">Allocation <span class="sort-arrow" data-col="allocation"></span></th>
+                            <th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="holdingsTbody">
@@ -209,20 +224,40 @@
                                 </span>
                                 <span class="qty-value">{{ holding.quantity }}</span>
                             </td>
-                            <td class="avgprice-cell font-mono text-right" data-pv="avgprice">₹{{ "%.2f"|format(holding.average_price|float) if holding.average_price else "0.00" }}</td>
-                            <td class="ltp-cell font-mono text-right">₹{{ "%.2f"|format(holding.ltp|float) if holding.ltp else "0.00" }}</td>
-                            <td class="invested-cell font-mono text-right" data-pv="value">₹{{ "%.2f"|format(holding.invested) }}</td>
-                            <td class="current-cell font-mono text-right" data-pv="value">₹{{ "%.2f"|format(holding.current) }}</td>
+                            <td class="avgprice-cell font-mono text-right" data-pv="avgprice">{{ fmt_currency(holding.average_price|float if holding.average_price else none) }}</td>
+                            <td class="ltp-cell font-mono text-right">{{ fmt_currency(holding.ltp|float if holding.ltp else none) }}</td>
+                            <td class="invested-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.invested) }}</td>
+                            <td class="current-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.current) }}</td>
                             <td class="pnl-cell font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}" data-pv="pnl">
-                                ₹{{ "%.2f"|format(holding.pnl|float) if holding.pnl else "0.00" }}
+                                {{ fmt_currency(holding.pnl|float if holding.pnl else none) }}
                             </td>
                             <td class="pnlpercent-cell text-right {{ 'text-success' if holding.pnlpercent|float >= 0 else 'text-error' }}" data-pv="pnl">
-                                {{ "%.2f"|format(holding.pnlpercent|float) if holding.pnlpercent else "0.00" }}%
+                                {{ fmt_pct(holding.pnlpercent|float if holding.pnlpercent else none) }}
                             </td>
                             <td class="daychg-cell text-right {{ 'text-success' if holding.day_change_percent is defined and holding.day_change_percent >= 0 else 'text-error' if holding.day_change_percent is defined else 'text-base-content/50' }}">
-                                {{ "%.2f"|format(holding.day_change_percent) ~ "%" if holding.day_change_percent is defined else "-" }}
+                                {{ fmt_pct(holding.day_change_percent, undefined_text="-") }}
                             </td>
-                            <td class="allocation-cell font-mono text-right text-base-content/70">{{ "%.2f"|format(holding.allocation) }}%</td>
+                            <td class="allocation-cell font-mono text-right text-base-content/70">{{ fmt_pct(holding.allocation) }}</td>
+                            <td class="actions-cell text-center">
+                                <div class="flex items-center justify-center gap-2">
+                                    <button type="button"
+                                            class="btn btn-outline btn-xs h-7 px-3 border-green-600/40 text-green-600 hover:bg-green-600/10"
+                                            data-account-id="{{ holding.account_id }}"
+                                            data-symbol="{{ holding.symbol }}"
+                                            data-exchange="{{ holding.exchange }}"
+                                            data-qty="{{ holding.quantity or 0 }}"
+                                            data-action="BUY"
+                                            onclick="openOrderModal(this)">Add</button>
+                                    <button type="button"
+                                            class="btn btn-outline btn-xs h-7 px-3 border-red-600/40 text-red-600 hover:bg-red-600/10"
+                                            data-account-id="{{ holding.account_id }}"
+                                            data-symbol="{{ holding.symbol }}"
+                                            data-exchange="{{ holding.exchange }}"
+                                            data-qty="{{ holding.quantity or 0 }}"
+                                            data-action="SELL"
+                                            onclick="openOrderModal(this)">Exit</button>
+                                </div>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -231,18 +266,19 @@
                             <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
                             <td></td>
                             <td></td>
-                            <td id="footInvested" class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(statistics.totalinvvalue) }}</td>
-                            <td id="footCurrent" class="font-mono text-right" data-pv="value">₹{{ "%.2f"|format(statistics.totalholdingvalue) }}</td>
+                            <td id="footInvested" class="font-mono text-right" data-pv="value">{{ fmt_currency(statistics.totalinvvalue) }}</td>
+                            <td id="footCurrent" class="font-mono text-right" data-pv="value">{{ fmt_currency(statistics.totalholdingvalue) }}</td>
                             <td id="footPnl" class="font-mono text-right {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}" data-pv="pnl">
-                                ₹{{ "%.2f"|format(statistics.totalprofitandloss) }}
+                                {{ fmt_currency(statistics.totalprofitandloss) }}
                             </td>
                             <td id="footPnlPct" class="text-right {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}" data-pv="pnl">
-                                {{ "%.2f"|format(statistics.totalpnlpercentage) }}%
+                                {{ fmt_pct(statistics.totalpnlpercentage) }}
                             </td>
                             <td id="footDayPnlPct" class="text-right {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' if statistics.totaldaypnlpercentage is defined else 'text-base-content/50' }}">
-                                {{ "%.2f"|format(statistics.totaldaypnlpercentage) ~ "%" if statistics.totaldaypnlpercentage is defined else "-" }}
+                                {{ fmt_pct(statistics.totaldaypnlpercentage, undefined_text="-") }}
                             </td>
                             <td class="font-mono text-right">100.00%</td>
+                            <td></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -345,6 +381,80 @@
             <button type="button" id="tagModalRemoveBtn" class="btn btn-ghost btn-sm text-error mr-auto hidden" onclick="removeTagFromModal()">Remove Tag</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="tagModal.close()">Cancel</button>
             <button type="button" class="btn btn-primary btn-sm" onclick="saveTagFromModal()">Save</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<!-- Order Dialog - reused for both Add and Exit; opened pre-filled from the
+     row's data-* attributes. CNC defaults since a holding is by definition
+     a delivery position, but stays editable for an intraday exit. -->
+<dialog id="orderModal" class="modal">
+    <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-lg mb-1">
+            Place Order - <span id="orderModalAction" class="font-mono"></span>
+            <span id="orderModalSymbol" class="text-muted-foreground font-normal text-sm"></span>
+        </h3>
+
+        <div class="space-y-4 py-2">
+            <div class="space-y-2">
+                <label class="text-xs">Action</label>
+                <div class="flex gap-2">
+                    <button type="button" id="orderModalBuyBtn" class="btn btn-sm flex-1" onclick="setOrderModalAction('BUY')">BUY</button>
+                    <button type="button" id="orderModalSellBtn" class="btn btn-sm flex-1" onclick="setOrderModalAction('SELL')">SELL</button>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-xs">Quantity</label>
+                <input type="number" id="orderModalQty" class="input input-bordered input-sm w-full" min="1" step="1">
+            </div>
+
+            <div class="space-y-2" id="orderModalExchangeWrap">
+                <label class="text-xs">Exchange</label>
+                <select id="orderModalExchange" class="select select-bordered select-sm w-full">
+                    <option value="NSE">NSE</option>
+                    <option value="BSE">BSE</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-2">
+                    <label class="text-xs">Price Type</label>
+                    <select id="orderModalPriceType" class="select select-bordered select-sm w-full" onchange="updateOrderModalPriceFields()">
+                        <option value="MARKET">Market</option>
+                        <option value="LIMIT">Limit</option>
+                        <option value="SL-M">SL-M</option>
+                        <option value="SL">SL-L</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs">Product</label>
+                    <select id="orderModalProduct" class="select select-bordered select-sm w-full">
+                        <option value="CNC">CNC</option>
+                        <option value="MIS">MIS</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-2 hidden" id="orderModalPriceWrap">
+                <label class="text-xs">Price</label>
+                <input type="number" id="orderModalPrice" class="input input-bordered input-sm w-full" min="0" step="0.05">
+            </div>
+
+            <div class="space-y-2 hidden" id="orderModalTriggerWrap">
+                <label class="text-xs">Trigger Price</label>
+                <input type="number" id="orderModalTrigger" class="input input-bordered input-sm w-full" min="0" step="0.05">
+            </div>
+
+            <p id="orderModalError" class="text-xs text-error hidden"></p>
+        </div>
+
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="orderModal.close()">Cancel</button>
+            <button type="button" id="orderModalSubmitBtn" class="btn btn-sm" onclick="submitOrderModal()">Place Order</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">
@@ -475,6 +585,20 @@ function recomputeSummaryStats() {
         const el = document.getElementById(id);
         if (el) { el.classList.toggle('text-success', value >= 0); el.classList.toggle('text-error', value < 0); }
     };
+    // For the pill-badge percentage elements (statTotalPnlPct/statDayPnlPct)
+    // rather than plain colored text - toggles the full bg/text/border set
+    // together so it never lands on a half-success/half-error combination.
+    const setSignBadge = (id, value) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const positive = value >= 0;
+        el.classList.toggle('bg-green-500/10', positive);
+        el.classList.toggle('text-green-600', positive);
+        el.classList.toggle('border-green-500/30', positive);
+        el.classList.toggle('bg-red-500/10', !positive);
+        el.classList.toggle('text-red-600', !positive);
+        el.classList.toggle('border-red-500/30', !positive);
+    };
 
     setText('statInvested', '₹' + invested.toFixed(2));
     setText('footInvested', '₹' + invested.toFixed(2));
@@ -486,7 +610,7 @@ function recomputeSummaryStats() {
     setSign('footPnl', pnl);
     setText('statTotalPnlPct', (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%');
     setText('footPnlPct', pnlPct.toFixed(2) + '%');
-    setSign('statTotalPnlPct', pnlPct);
+    setSignBadge('statTotalPnlPct', pnlPct);
     setSign('footPnlPct', pnlPct);
 
     const dayWrap = document.getElementById('statDayPnlWrap');
@@ -496,6 +620,7 @@ function recomputeSummaryStats() {
         setText('statDayPnl', '₹' + dayPnl.toFixed(2));
         setSign('statDayPnl', dayPnl);
         setText('statDayPnlPct', (dayPct >= 0 ? '+' : '') + dayPct.toFixed(2) + '%');
+        setSignBadge('statDayPnlPct', dayPct);
         setText('footDayPnlPct', dayPct.toFixed(2) + '%');
         setSign('footDayPnlPct', dayPct);
     } else if (dayWrap) {
@@ -689,6 +814,101 @@ async function sendTagRequest(url, body) {
     }
 }
 
+let orderModalAccountId = null;
+
+// Opens the shared order dialog for one row's Add/Exit button (data
+// attributes carry account/symbol/exchange/qty and which action to start
+// on - see the .actions-cell buttons). Not wired up for merged rows (see
+// renderMergedView) since a merged row spans more than one account and has
+// no single target to route the order through.
+function openOrderModal(btn) {
+    orderModalAccountId = btn.dataset.accountId;
+    document.getElementById('orderModalSymbol').textContent = btn.dataset.symbol;
+    document.getElementById('orderModalQty').value = btn.dataset.qty || 1;
+    document.getElementById('orderModalExchange').value = btn.dataset.exchange;
+    // Non-NSE/BSE holdings (rare, but possible via a broker's own listing)
+    // stay locked to their real exchange rather than offering a switch that
+    // would route the order somewhere it was never held.
+    const isEquityExchange = btn.dataset.exchange === 'NSE' || btn.dataset.exchange === 'BSE';
+    document.getElementById('orderModalExchangeWrap').classList.toggle('hidden', !isEquityExchange);
+    document.getElementById('orderModalPriceType').value = 'MARKET';
+    document.getElementById('orderModalProduct').value = 'CNC';
+    document.getElementById('orderModalError').classList.add('hidden');
+    updateOrderModalPriceFields();
+    setOrderModalAction(btn.dataset.action);
+    orderModal.showModal();
+}
+
+function setOrderModalAction(action) {
+    const buyBtn = document.getElementById('orderModalBuyBtn');
+    const sellBtn = document.getElementById('orderModalSellBtn');
+    const actionLabel = document.getElementById('orderModalAction');
+    const submitBtn = document.getElementById('orderModalSubmitBtn');
+    buyBtn.dataset.selected = action === 'BUY' ? '1' : '0';
+    sellBtn.dataset.selected = action === 'SELL' ? '1' : '0';
+    buyBtn.className = 'btn btn-sm flex-1 ' + (action === 'BUY' ? 'bg-green-600 hover:bg-green-700 border-green-600 text-white' : 'btn-outline');
+    sellBtn.className = 'btn btn-sm flex-1 ' + (action === 'SELL' ? 'bg-red-600 hover:bg-red-700 border-red-600 text-white' : 'btn-outline');
+    actionLabel.textContent = action;
+    actionLabel.className = 'font-mono ' + (action === 'BUY' ? 'text-success' : 'text-error');
+    submitBtn.textContent = 'Place ' + action + ' Order';
+    submitBtn.className = 'btn btn-sm ' + (action === 'BUY' ? 'bg-green-600 hover:bg-green-700 border-green-600 text-white' : 'bg-red-600 hover:bg-red-700 border-red-600 text-white');
+}
+
+function updateOrderModalPriceFields() {
+    const priceType = document.getElementById('orderModalPriceType').value;
+    const needsPrice = priceType === 'LIMIT' || priceType === 'SL';
+    const needsTrigger = priceType === 'SL-M' || priceType === 'SL';
+    document.getElementById('orderModalPriceWrap').classList.toggle('hidden', !needsPrice);
+    document.getElementById('orderModalTriggerWrap').classList.toggle('hidden', !needsTrigger);
+}
+
+async function submitOrderModal() {
+    const errorEl = document.getElementById('orderModalError');
+    errorEl.classList.add('hidden');
+
+    const action = document.getElementById('orderModalBuyBtn').dataset.selected === '1' ? 'BUY' : 'SELL';
+    const symbol = document.getElementById('orderModalSymbol').textContent;
+    const exchange = document.getElementById('orderModalExchange').value;
+    const quantity = document.getElementById('orderModalQty').value;
+    const priceType = document.getElementById('orderModalPriceType').value;
+    const product = document.getElementById('orderModalProduct').value;
+    const price = document.getElementById('orderModalPrice').value;
+    const triggerPrice = document.getElementById('orderModalTrigger').value;
+
+    const submitBtn = document.getElementById('orderModalSubmitBtn');
+    submitBtn.disabled = true;
+    try {
+        const resp = await fetchWithCSRF("{{ url_for('trading.place_holding_order') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                account_id: orderModalAccountId,
+                symbol: symbol,
+                exchange: exchange,
+                action: action,
+                quantity: quantity,
+                price_type: priceType,
+                product: product,
+                price: price || null,
+                trigger_price: triggerPrice || null,
+            })
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            errorEl.textContent = data.message || 'Failed to place order';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        orderModal.close();
+        location.reload();
+    } catch (e) {
+        errorEl.textContent = 'Failed to place order';
+        errorEl.classList.remove('hidden');
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+
 function toggleMergeView() {
     mergeViewOn = !mergeViewOn;
     const btn = document.getElementById('mergeAccountsBtn');
@@ -792,6 +1012,16 @@ function renderMergedView() {
                 ? Array.from(strategies).map(s => `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">${s}</span>`).join('')
                 : '<span class="text-xs text-base-content/30">-</span>';
             tagTrigger.replaceWith(replacement);
+        }
+
+        // Same reasoning as the tag trigger above - Add/Exit needs one
+        // account to route the order through, which a merged row doesn't
+        // have. Show a plain dash instead of silently keeping the first
+        // account's buttons (which would place the order on the wrong
+        // account without any indication).
+        const actionsCell = merged.querySelector('.actions-cell');
+        if (actionsCell) {
+            actionsCell.innerHTML = '<span class="text-xs text-base-content/30">-</span>';
         }
 
         // Free/T1/pledged quantities each sum independently rather than

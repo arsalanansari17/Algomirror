@@ -668,6 +668,80 @@ def untag_holding():
     return jsonify({'status': 'success', 'symbol': symbol})
 
 
+@trading_bp.route('/holdings/order', methods=['POST'])
+@login_required
+@api_rate_limit()
+def place_holding_order():
+    """Place a manual BUY (Add) or SELL (Exit) order against a single
+    holding - the Actions column on the Holdings page. Product defaults to
+    CNC since a holding is by definition a delivery position, but stays
+    editable (matching OpenAlgo's own PlaceOrderDialog) in case the user
+    wants to exit intraday (MIS) instead."""
+    payload = request.get_json(silent=True) or {}
+    account_id = payload.get('account_id')
+    symbol = (payload.get('symbol') or '').strip()
+    exchange = (payload.get('exchange') or '').strip()
+    action = (payload.get('action') or '').strip().upper()
+    product = (payload.get('product') or 'CNC').strip().upper()
+    price_type = (payload.get('price_type') or 'MARKET').strip().upper()
+    quantity = payload.get('quantity')
+    price = payload.get('price')
+    trigger_price = payload.get('trigger_price')
+
+    if not all([account_id, symbol, exchange, action]):
+        return jsonify({'status': 'error', 'message': 'Missing account_id/symbol/exchange/action'}), 400
+    if action not in ('BUY', 'SELL'):
+        return jsonify({'status': 'error', 'message': 'action must be BUY or SELL'}), 400
+    try:
+        quantity = int(float(quantity))
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'message': 'Invalid quantity'}), 400
+    if quantity <= 0:
+        return jsonify({'status': 'error', 'message': 'Quantity must be greater than 0'}), 400
+    if price_type in ('LIMIT', 'SL') and not price:
+        return jsonify({'status': 'error', 'message': 'Price is required for this order type'}), 400
+    if price_type in ('SL', 'SL-M') and not trigger_price:
+        return jsonify({'status': 'error', 'message': 'Trigger price is required for this order type'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    kwargs = {}
+    if price:
+        kwargs['price'] = price
+    if trigger_price:
+        kwargs['trigger_price'] = trigger_price
+
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        response = client.placeorder(
+            strategy='AlgoMirror Holdings',
+            symbol=symbol,
+            action=action,
+            exchange=exchange,
+            price_type=price_type,
+            product=product,
+            quantity=str(quantity),
+            **kwargs,
+        )
+        if response and response.get('status') == 'success':
+            return jsonify({
+                'status': 'success',
+                'message': f'{action.title()} order placed for {symbol}',
+                'orderid': response.get('orderid'),
+            })
+        return jsonify({
+            'status': 'error',
+            'message': (response or {}).get('message', 'Failed to place order'),
+        }), 400
+    except Exception as e:
+        current_app.logger.error(f'Error placing {action} order for {symbol} on account {account_id}: {e}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 def _find_open_position(client, symbol, exchange, product):
     """Look up the live net quantity for one symbol/exchange/product from
     the account's current positionbook. Returns None if not found/open."""

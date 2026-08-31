@@ -1,5 +1,20 @@
 {% extends "layout.html" %}
-{% from 'macros/ui.html' import button %}
+{% from 'macros/ui.html' import button, badge, card, card_header, card_title, card_description, card_content %}
+{# Full independent strings, never a macro variant + bg-* "override" - two
+   utility classes for the same property have no winner by class-attribute
+   order, only by which compiles later in the stylesheet (see the same note
+   in orderbook.html/tradebook.html, found the hard way this session). JS
+   below sets these exact strings wholesale when it recomputes a value's
+   sign, so the literal text here must stay in sync with those assignments. #}
+{% set STAT_BADGE_POS = 'leading-none font-semibold text-2xl lg:text-4xl text-green-600' %}
+{% set STAT_BADGE_NEG = 'leading-none font-semibold text-2xl lg:text-4xl text-red-600' %}
+{% set STRATEGY_BADGE_COLORS = ['bg-cyan-500/20 text-cyan-600 border-cyan-500/30', 'bg-purple-500/20 text-purple-600 border-purple-500/30', 'bg-pink-500/20 text-pink-600 border-pink-500/30', 'bg-green-500/20 text-green-600 border-green-500/30', 'bg-blue-500/20 text-blue-600 border-blue-500/30', 'bg-amber-500/20 text-amber-600 border-amber-500/30'] %}
+{% set BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden' %}
+{% set CONNECTED_BADGE = BADGE_SHAPE ~ ' bg-green-500 text-white border-transparent' %}
+{% set UNKNOWN_BADGE = BADGE_SHAPE ~ ' bg-amber-500 text-white border-transparent' %}
+{% set MODE_LIVE_BADGE = BADGE_SHAPE ~ ' bg-green-500 text-white border-transparent' %}
+{% set MODE_ANALYZE_BADGE = BADGE_SHAPE ~ ' bg-amber-500 text-white border-transparent' %}
+{% set MODE_UNKNOWN_BADGE = BADGE_SHAPE ~ ' border-border text-muted-foreground' %}
 
 {% block title %}Dashboard - AlgoMirror{% endblock %}
 
@@ -67,67 +82,52 @@
     {% endif %}
 
     <!-- Overall Summary Stats -->
-    <div class="stats stats-vertical lg:stats-horizontal shadow w-full mb-6 bg-base-100">
-        <div class="stat">
-            <div class="stat-figure text-primary">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
+    <div class="grid gap-4 {{ 'md:grid-cols-5' if strategy_engine_enabled else 'md:grid-cols-3' }} mb-6">
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Active Accounts</div>
+                <div class="{{ card_title() }} text-2xl">{{ overall_stats.total_active_accounts }}</div>
+                <div class="{{ card_description() }} text-xs">Trading accounts with margin tracking</div>
             </div>
-            <div class="stat-title">Active Accounts</div>
-            <div class="stat-value text-primary">{{ overall_stats.total_active_accounts }}</div>
-            <div class="stat-desc">Trading accounts with margin tracking</div>
         </div>
 
-        <div class="stat">
-            <div class="stat-figure text-secondary">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Available Margin</div>
+                <div class="{{ card_title() }} text-2xl lg:text-4xl" id="total-available-margin" data-pv="value">
+                    <span class="loading loading-spinner loading-md"></span>
+                </div>
+                <div class="{{ card_description() }} text-xs">Cash + Collateral</div>
             </div>
-            <div class="stat-title">Available Margin</div>
-            <div class="stat-value text-secondary text-2xl lg:text-4xl" id="total-available-margin" data-pv="value">
-                <span class="loading loading-spinner loading-md"></span>
-            </div>
-            <div class="stat-desc">Cash + Collateral</div>
         </div>
 
-        <div class="stat">
-            <div class="stat-figure">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                </svg>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Account M2M P&amp;L</div>
+                <div class="{{ card_title() }} text-2xl lg:text-4xl" id="total-m2m-pnl" data-pv="pnl">
+                    <span class="loading loading-spinner loading-md"></span>
+                </div>
+                <div class="{{ card_description() }} text-xs">Broker reported P&amp;L</div>
             </div>
-            <div class="stat-title">Account M2M P&L</div>
-            <div class="stat-value text-2xl lg:text-4xl" id="total-m2m-pnl" data-pv="pnl">
-                <span class="loading loading-spinner loading-md"></span>
-            </div>
-            <div class="stat-desc">Broker reported P&L</div>
         </div>
 
         {% if strategy_engine_enabled %}
-        <div class="stat">
-            <div class="stat-figure text-accent">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                </svg>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Strategy P&amp;L</div>
+                <div class="{{ card_title() }} text-2xl lg:text-4xl" id="total-strategy-pnl" data-pv="pnl">
+                    <span class="loading loading-spinner loading-md"></span>
+                </div>
+                <div class="{{ card_description() }} text-xs">AlgoMirror tracked P&amp;L</div>
             </div>
-            <div class="stat-title">Strategy P&L</div>
-            <div class="stat-value text-2xl lg:text-4xl" id="total-strategy-pnl" data-pv="pnl">
-                <span class="loading loading-spinner loading-md"></span>
-            </div>
-            <div class="stat-desc">AlgoMirror tracked P&L</div>
         </div>
 
-        <div class="stat">
-            <div class="stat-figure text-accent">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                </svg>
+        <div class="{{ card() }}">
+            <div class="{{ card_header('pb-2') }}">
+                <div class="{{ card_description() }}">Total Strategies</div>
+                <div class="{{ card_title() }} text-2xl">{{ overall_stats.total_strategies }}</div>
+                <div class="{{ card_description() }} text-xs">Strategies with open positions</div>
             </div>
-            <div class="stat-title">Total Strategies</div>
-            <div class="stat-value text-accent">{{ overall_stats.total_strategies }}</div>
-            <div class="stat-desc">Strategies with open positions</div>
         </div>
         {% endif %}
     </div>
@@ -135,8 +135,8 @@
     <!-- Account Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {% for account in accounts %}
-        <div class="card bg-base-100 shadow-lg" id="account-card-{{ account.id }}">
-            <div class="card-body">
+        <div class="{{ card() }}" id="account-card-{{ account.id }}">
+            <div class="{{ card_content() }}">
                 <div class="flex justify-between items-start mb-2">
                     <div data-pv="account">
                         <h3 class="font-semibold text-lg">{{ account.account_name }}</h3>
@@ -144,13 +144,19 @@
                     </div>
                     <div class="flex flex-col items-end gap-1">
                         {% set status = (account.connection_status or 'unknown').lower() %}
-                        {% set badge_class = 'badge-success' if status == 'connected'
-                            else 'badge-error' if status == 'failed'
-                            else 'badge-warning' %}
-                        <span class="badge {{ badge_class }} badge-sm">
-                            {{ status.title() }}
-                        </span>
-                        <span class="badge badge-sm badge-ghost" id="mode-{{ account.id }}">
+                        {# Explicit full strings, not composed with badge()'s own
+                           variant background - two utility classes for the same
+                           property have no winner by class-attribute order, only
+                           by compiled-stylesheet order (found the hard way fixing
+                           the BUY badge in orderbook.html - don't repeat it). #}
+                        {% if status == 'connected' %}
+                        <span class="{{ CONNECTED_BADGE }}">{{ status.title() }}</span>
+                        {% elif status == 'failed' %}
+                        <span class="{{ badge('destructive') }}">{{ status.title() }}</span>
+                        {% else %}
+                        <span class="{{ UNKNOWN_BADGE }}">{{ status.title() }}</span>
+                        {% endif %}
+                        <span class="{{ MODE_UNKNOWN_BADGE }}" id="mode-{{ account.id }}">
                             <span class="loading loading-spinner loading-xs"></span>
                         </span>
                     </div>
@@ -185,11 +191,15 @@
                         <p class="text-sm text-base-content/60 mb-2">Active Strategies</p>
                         <div class="space-y-1.5" id="active-strat-{{ account.id }}">
                             {% if account_strategies[account.id]|length > 0 %}
-                                {% set badge_colors = ['badge-primary', 'badge-secondary', 'badge-accent', 'badge-success', 'badge-info', 'badge-warning'] %}
                                 {% for strategy in account_strategies[account.id] %}
-                                {% set color_class = badge_colors[loop.index0 % badge_colors|length] %}
+                                {# badge/badge-sm are DaisyUI component-layer classes, so a
+                                   Tailwind utility override (utilities layer) always wins
+                                   regardless of source order - safe, unlike badge()'s own
+                                   utility-only variant strings (see CONNECTED_BADGE note
+                                   above). #}
+                                {% set color_class = STRATEGY_BADGE_COLORS[loop.index0 % STRATEGY_BADGE_COLORS|length] %}
                                 <div class="flex items-center gap-2">
-                                    <a href="{{ url_for('strategy.builder', strategy_id=strategy.id) }}" class="badge {{ color_class }} badge-sm flex-1 justify-between py-3 px-3 cursor-pointer hover:brightness-110 transition-all">
+                                    <a href="{{ url_for('strategy.builder', strategy_id=strategy.id) }}" class="badge badge-sm {{ color_class }} flex-1 justify-between py-3 px-3 cursor-pointer hover:brightness-110 transition-all">
                                         <div class="flex items-center gap-1.5 min-w-0">
                                             <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
@@ -222,18 +232,18 @@
 
     {% if strategy_engine_enabled %}
     <!-- Strategy Positions Section -->
-    <div class="card bg-base-100 shadow-lg mb-6">
-        <div class="card-body">
+    <div class="{{ card() }} mb-6">
+        <div class="{{ card_content() }}">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="card-title">Strategy Positions</h2>
+                <h2 class="{{ card_title() }} text-lg">Strategy Positions</h2>
                 <div class="flex gap-2">
-                    <button onclick="checkExpiredExecutions()" class="btn btn-ghost btn-sm" title="Check for expired positions">
+                    <button onclick="checkExpiredExecutions()" class="{{ button('ghost', 'sm') }}" title="Check for expired positions">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                         Check Expired
                     </button>
-                    <a href="{{ url_for('strategy.templates') }}" class="btn btn-ghost btn-sm">
+                    <a href="{{ url_for('strategy.templates') }}" class="{{ button('ghost', 'sm') }}">
                         Manage Templates
                         <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -410,6 +420,15 @@
 </dialog>
 
 <script>
+// Sourced from the template's own Jinja vars (not duplicated by hand) so the
+// class strings JS swaps in for a live P&L value can never drift from what
+// card_title() actually renders server-side.
+const STAT_BADGE_POS = {{ STAT_BADGE_POS|tojson }};
+const STAT_BADGE_NEG = {{ STAT_BADGE_NEG|tojson }};
+const MODE_LIVE_BADGE = {{ MODE_LIVE_BADGE|tojson }};
+const MODE_ANALYZE_BADGE = {{ MODE_ANALYZE_BADGE|tojson }};
+const MODE_UNKNOWN_BADGE = {{ MODE_UNKNOWN_BADGE|tojson }};
+
 // Format number always in Lakhs (e.g., 597000 → "5.97L", 57000 → "0.57L")
 function formatInLakhs(num) {
     const lakhs = num / 100000;
@@ -702,9 +721,8 @@ async function loadAccountFunds() {
     // Update total M2M P&L
     const totalPnlEl = document.getElementById('total-m2m-pnl');
     if (totalPnlEl) {
-        const colorClass = totalM2MPnL >= 0 ? 'text-success' : 'text-error';
         totalPnlEl.textContent = `₹ ${totalM2MPnL.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        totalPnlEl.className = `stat-value ${colorClass}`;
+        totalPnlEl.className = totalM2MPnL >= 0 ? STAT_BADGE_POS : STAT_BADGE_NEG;
     }
 }
 
@@ -732,10 +750,10 @@ async function loadAccountModes() {
         if (success && data.status === 'success' && data.data) {
             const isAnalyze = !!data.data.analyze_mode;
             modeEl.textContent = isAnalyze ? 'Analyze' : 'Live';
-            modeEl.className = `badge badge-sm ${isAnalyze ? 'badge-warning' : 'badge-success'}`;
+            modeEl.className = isAnalyze ? MODE_ANALYZE_BADGE : MODE_LIVE_BADGE;
         } else {
             modeEl.textContent = '--';
-            modeEl.className = 'badge badge-sm badge-ghost';
+            modeEl.className = MODE_UNKNOWN_BADGE;
         }
     }
 }
@@ -774,10 +792,8 @@ async function loadStrategyPnL() {
     // Update total Strategy P&L
     const totalStrategyPnlEl = document.getElementById('total-strategy-pnl');
     if (totalStrategyPnlEl) {
-        const sign = totalStrategyPnL >= 0 ? '' : '';
-        const colorClass = totalStrategyPnL >= 0 ? 'text-success' : 'text-error';
-        totalStrategyPnlEl.textContent = `₹ ${sign}${totalStrategyPnL.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        totalStrategyPnlEl.className = `stat-value ${colorClass}`;
+        totalStrategyPnlEl.textContent = `₹ ${totalStrategyPnL.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        totalStrategyPnlEl.className = totalStrategyPnL >= 0 ? STAT_BADGE_POS : STAT_BADGE_NEG;
     }
 }
 

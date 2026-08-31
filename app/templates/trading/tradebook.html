@@ -1,7 +1,8 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
-{% from 'macros/ui.html' import button, card, card_header, card_title, card_description, card_content %}
+{% from 'macros/ui.html' import button, badge, card, card_header, card_title, card_description, card_content %}
+{% from 'macros/icons.html' import trending_up, trending_down %}
 
 {% block title %}Trade Book - AlgoMirror{% endblock %}
 
@@ -9,7 +10,12 @@
 
 {% block content %}
 {% set single_account = selected_account_ids|length == 1 %}
-{% set BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden' %}
+{# Explicit full string, NOT badge('default', 'bg-green-500 ...') - see the
+   same comment in orderbook.html; the macro's own bg-oaprimary and an
+   "override" bg-green-500 are both utility-layer classes for the same
+   property, and oaprimary compiles later, so it silently wins regardless of
+   class-attribute order. #}
+{% set BUY_BADGE = 'inline-flex items-center justify-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden bg-green-500 text-white' %}
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -60,19 +66,23 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Buy Trades</div>
-                <div class="{{ card_title() }} text-2xl text-success">{{ buy_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-green-600 flex items-center gap-2">
+                    {{ trending_up('h-5 w-5') }}{{ buy_count }}
+                </div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Sell Trades</div>
-                <div class="{{ card_title() }} text-2xl text-error">{{ sell_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-red-600 flex items-center gap-2">
+                    {{ trending_down('h-5 w-5') }}{{ sell_count }}
+                </div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Net P&amp;L</div>
-                <div class="{{ card_title() }} text-2xl {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
+                <div class="{{ card_title() }} text-2xl {{ 'text-green-600' if total_pnl >= 0 else 'text-red-600' }}">
                     ₹{{ "%.2f"|format(total_pnl) }}
                 </div>
             </div>
@@ -120,7 +130,8 @@
                             <td class="font-semibold">{{ trade.symbol }}</td>
                             <td>{{ trade.exchange }}</td>
                             <td>
-                                <span class="{{ BADGE_SHAPE }} {{ 'bg-success/20 text-success border-success/30' if trade.action == 'BUY' else 'bg-error/20 text-error border-error/30' }}">
+                                <span class="{{ BUY_BADGE if trade.action == 'BUY' else badge('destructive', 'gap-1') }}">
+                                    {{ trending_up('h-3 w-3') if trade.action == 'BUY' else trending_down('h-3 w-3') }}
                                     {{ trade.action }}
                                 </span>
                             </td>

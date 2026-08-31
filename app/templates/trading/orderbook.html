@@ -1,7 +1,8 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
-{% from 'macros/ui.html' import button, card, card_header, card_title, card_description, card_content %}
+{% from 'macros/ui.html' import button, badge, card, card_header, card_title, card_description, card_content %}
+{% from 'macros/icons.html' import check_circle, x_circle, clock %}
 
 {% block title %}Order Book - AlgoMirror{% endblock %}
 
@@ -9,7 +10,13 @@
 
 {% block content %}
 {% set single_account = selected_account_ids|length == 1 %}
-{% set BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden' %}
+{# Explicit full string, NOT badge('default', 'bg-green-500 ...') - two utility
+   classes for the same property (bg-oaprimary from the macro's own variant,
+   bg-green-500 from an "override") have no winner based on class-attribute
+   order, only on which compiles later in the stylesheet, which happens to be
+   oaprimary - silently rendering BUY as black/white instead of green. Verified
+   via direct compiled-CSS byte order, not assumed. #}
+{% set BUY_BADGE = 'inline-flex items-center justify-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 gap-1 overflow-hidden bg-green-500 text-white' %}
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -52,31 +59,31 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Buy Orders</div>
-                <div class="{{ card_title() }} text-2xl text-success">{{ statistics.total_buy_orders }}</div>
+                <div class="{{ card_title() }} text-2xl text-green-600">{{ statistics.total_buy_orders }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Sell Orders</div>
-                <div class="{{ card_title() }} text-2xl text-error">{{ statistics.total_sell_orders }}</div>
+                <div class="{{ card_title() }} text-2xl text-red-600">{{ statistics.total_sell_orders }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Completed</div>
-                <div class="{{ card_title() }} text-2xl text-oaprimary">{{ statistics.total_completed_orders }}</div>
+                <div class="{{ card_title() }} text-2xl">{{ statistics.total_completed_orders }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Open</div>
-                <div class="{{ card_title() }} text-2xl text-warning">{{ statistics.total_open_orders }}</div>
+                <div class="{{ card_title() }} text-2xl text-blue-600">{{ statistics.total_open_orders }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
-                <div class="{{ card_description() }}">Cancelled</div>
-                <div class="{{ card_title() }} text-2xl text-muted-foreground">{{ statistics.total_cancelled_orders }}</div>
+                <div class="{{ card_description() }}">Rejected</div>
+                <div class="{{ card_title() }} text-2xl text-red-600">{{ statistics.total_rejected_orders }}</div>
             </div>
         </div>
     </div>
@@ -125,7 +132,7 @@
                             <td class="font-semibold">{{ order.symbol }}</td>
                             <td>{{ order.exchange }}</td>
                             <td>
-                                <span class="{{ BADGE_SHAPE }} {{ 'bg-success/20 text-success border-success/30' if order.action == 'BUY' else 'bg-error/20 text-error border-error/30' }}">
+                                <span class="{{ BUY_BADGE if order.action == 'BUY' else badge('destructive') }}">
                                     {{ order.action }}
                                 </span>
                             </td>
@@ -134,10 +141,18 @@
                             <td class="font-mono" data-pv="qty">{{ order.quantity }}</td>
                             <td class="font-mono" data-pv="value">₹{{ "%.2f"|format(order.price|float) }}</td>
                             <td>
-                                {% set status_class = 'bg-success/20 text-success border-success/30' if order.order_status == 'complete' else 'bg-warning/20 text-warning border-warning/30' if order.order_status in ['open', 'pending'] else 'bg-error/20 text-error border-error/30' if order.order_status == 'rejected' else 'text-muted-foreground border-border' %}
-                                <span class="{{ BADGE_SHAPE }} {{ status_class }}">
-                                    {{ order.order_status }}
-                                </span>
+                                {# Icon+text, not a badge pill - matches OpenAlgo's statusConfig exactly
+                                   (complete=green check, rejected=red x, cancelled=gray x, anything
+                                   else incl. open/pending=blue clock, same fallback OpenAlgo uses). #}
+                                {% if order.order_status == 'complete' %}
+                                <div class="flex items-center gap-1 text-green-500">{{ check_circle('h-4 w-4') }}<span class="text-sm">complete</span></div>
+                                {% elif order.order_status == 'rejected' %}
+                                <div class="flex items-center gap-1 text-red-500">{{ x_circle('h-4 w-4') }}<span class="text-sm">rejected</span></div>
+                                {% elif order.order_status == 'cancelled' %}
+                                <div class="flex items-center gap-1 text-base-content/50">{{ x_circle('h-4 w-4') }}<span class="text-sm">cancelled</span></div>
+                                {% else %}
+                                <div class="flex items-center gap-1 text-blue-500">{{ clock('h-4 w-4') }}<span class="text-sm">{{ order.order_status }}</span></div>
+                                {% endif %}
                             </td>
                             <td class="font-mono text-xs">{{ order.orderid }}</td>
                         </tr>
