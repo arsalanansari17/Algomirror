@@ -3,11 +3,6 @@
 @tailwind utilities;
 
 /* ============================================
-   GOOGLE FONTS - JetBrains Mono for Terminal
-   ============================================ */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
-/* ============================================
    OPENALGO PARITY TOKENS
    ============================================
    Raw oklch triplets (no wrapping oklch()) so Tailwind's <alpha-value>
@@ -179,11 +174,6 @@
 
 .status-warning {
   @apply text-warning;
-}
-
-/* Typography */
-.font-mono {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Monaco, Consolas, monospace;
 }
 
 /* Gradient backgrounds */

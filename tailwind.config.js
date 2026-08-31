@@ -101,8 +101,13 @@ module.exports = {
         ring: 'oklch(var(--oa-ring) / <alpha-value>)',
       },
       fontFamily: {
-        'mono': ['JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'monospace'],
-        'terminal': ['JetBrains Mono', 'Consolas', 'Monaco', 'monospace'],
+        /* Matches OpenAlgo's real font stack exactly - it loads no custom
+           webfont at all (no <link>, no @font-face, no fontFamily override
+           anywhere in its source), just Tailwind's own default system-font
+           stacks for both sans and mono. Previously loaded "JetBrains Mono"
+           from Google Fonts here, which OpenAlgo does not use. */
+        'mono': ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+        'terminal': ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
       },
       animation: {
         'slide-in': 'slideIn 0.2s ease-out',
