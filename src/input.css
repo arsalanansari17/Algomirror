@@ -168,6 +168,31 @@
   @apply border border-current bg-transparent;
 }
 
+/* DaisyUI's own .table component silently shrinks thead/tfoot font-size to
+   .75rem (12px) - smaller than the rest of the table's .875rem (14px,
+   matching Tailwind's own text-sm) - via its compiled
+   `.table :where(thead,tfoot){font-size:.75rem;font-weight:700;...}` rule.
+   OpenAlgo's real Table component applies text-sm uniformly with no
+   thead/tfoot distinction at all, so every header and footer row here was
+   rendering visibly smaller than OpenAlgo's real page - confirmed via
+   getComputedStyle() in a real browser, not just reading the CSS (a plain
+   utility class on the th/td itself, e.g. font-medium, DOES correctly
+   override DaisyUI's inherited font-weight, since an inherited value always
+   loses to any rule matching the element directly - but no such override
+   exists anywhere in this project for font-size, so DaisyUI's smaller
+   inherited value always won). This rule is genuinely more specific than
+   DaisyUI's own :where()-based one (:where() contributes zero to
+   specificity, so `.table :where(thead,tfoot)` and a plain utility class
+   are tied and it comes down to source order - `.table thead` includes a
+   real element-type selector, so it wins outright, no !important needed).
+   Font-weight is deliberately left alone - it already resolves correctly
+   per-cell via each cell's own font-medium/font-bold utility class. */
+.table thead,
+.table tfoot {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
 /* Responsive table */
 .table-responsive {
   @apply overflow-x-auto;

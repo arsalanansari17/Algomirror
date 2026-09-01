@@ -308,7 +308,15 @@
                            here previously omitted on the mistaken assumption OpenAlgo's
                            footer was unsigned. #}
                         <tr class="bg-muted/50">
-                            <td colspan="{{ 4 if not single_account else 3 }}" class="text-right text-muted-foreground">Total:</td>
+                            {# font-normal needed even though OpenAlgo's own cell has no
+                               font-weight class at all - DaisyUI's .table :where(tfoot)
+                               forces font-weight:700 on every cell in this row by
+                               inheritance, and unlike footInvested/footCurrent (which
+                               already carry their own font-bold, correctly overriding
+                               it), this cell had nothing of its own to win that
+                               inheritance fight, so it rendered bold when OpenAlgo's
+                               real "Total:" label isn't. #}
+                            <td colspan="{{ 4 if not single_account else 3 }}" class="text-right font-normal text-muted-foreground">Total:</td>
                             <td></td>
                             <td></td>
                             <td></td>
