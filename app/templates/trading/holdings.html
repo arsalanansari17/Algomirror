@@ -208,6 +208,7 @@
                             data-dayprevcloseval="{{ holding.day_prevclose_value if holding.day_prevclose_value is defined else '' }}"
                             data-allocation="{{ holding.allocation }}"
                             data-strategy="{{ holding.strategy or '' }}"
+                            data-account-id="{{ holding.account_id }}"
                             data-account-name="{{ holding.account_name }}"
                             data-account-broker="{{ holding.broker }}">
                             {# Account column removed - see KNOWN_ISSUES.md for where this
@@ -256,22 +257,26 @@
                                 {{ fmt_pct(holding.day_change_percent, undefined_text="-") }}
                             </td>
                             <td class="allocation-cell font-mono text-right text-muted-foreground">{{ fmt_pct(holding.allocation) }}</td>
+                            {# data-holders carries the (account, quantity) pair(s) this button's
+                               order can route through - a single entry for an unmerged row, or
+                               the whole merge group once renderMergedView() overwrites this for
+                               a merged row. Add's account dropdown lists every active account
+                               (ALL_ACCOUNTS below) regardless, since buying doesn't require an
+                               existing position; Exit's is scoped to just these holders. #}
                             <td class="actions-cell text-center">
                                 <div class="flex items-center justify-center gap-2">
                                     <button type="button"
                                             class="btn btn-outline btn-xs h-7 px-3 border-green-600/40 text-green-600 hover:bg-green-600/10"
-                                            data-account-id="{{ holding.account_id }}"
+                                            data-holders='[{"id": {{ holding.account_id }}, "name": {{ holding.account_name|tojson }}, "quantity": {{ holding.quantity or 0 }}}]'
                                             data-symbol="{{ holding.symbol }}"
                                             data-exchange="{{ holding.exchange }}"
-                                            data-qty="{{ holding.quantity or 0 }}"
                                             data-action="BUY"
                                             onclick="openOrderModal(this)">Add</button>
                                     <button type="button"
                                             class="btn btn-outline btn-xs h-7 px-3 border-red-600/40 text-red-600 hover:bg-red-600/10"
-                                            data-account-id="{{ holding.account_id }}"
+                                            data-holders='[{"id": {{ holding.account_id }}, "name": {{ holding.account_name|tojson }}, "quantity": {{ holding.quantity or 0 }}}]'
                                             data-symbol="{{ holding.symbol }}"
                                             data-exchange="{{ holding.exchange }}"
-                                            data-qty="{{ holding.quantity or 0 }}"
                                             data-action="SELL"
                                             onclick="openOrderModal(this)">Exit</button>
                                 </div>
@@ -439,6 +444,11 @@
             </div>
 
             <div class="space-y-2">
+                <label class="text-xs">Account</label>
+                <select id="orderModalAccount" class="select select-bordered select-sm w-full" onchange="onOrderModalAccountChange()"></select>
+            </div>
+
+            <div class="space-y-2">
                 <label class="text-xs">Quantity</label>
                 <input type="number" id="orderModalQty" class="input input-bordered input-sm w-full" min="1" step="1">
             </div>
@@ -502,6 +512,16 @@ const HOLDINGS_STORAGE_KEY = 'algomirror_holdings_prefs';
 // on refresh/filter/merge. Top-level (not a recomputeSummaryStats() local)
 // since renderMergedView() needs it too.
 const formatINR = (value) => '₹' + value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Every active account, for the order modal's Add dropdown (buying doesn't
+// require an existing position, so Add always offers the full list - Exit's
+// list instead comes from the triggering button's own data-holders, scoped
+// to accounts that actually hold this symbol). PRIMARY_ACCOUNT_ID drives the
+// default selection on a merged row per the user's own is_primary flag,
+// falling back to the group's first account if the primary doesn't hold
+// this particular symbol.
+const ALL_ACCOUNTS = [{% for a in accounts %}{ id: {{ a.id }}, name: {{ a.account_name|tojson }} }{{ ',' if not loop.last }}{% endfor %}];
+const PRIMARY_ACCOUNT_ID = {{ (current_user.get_primary_account().id if current_user.get_primary_account() else 'null') }};
 
 let holdingsFilters = { hasT1: false, hasPledged: false, strategy: [] };
 let mergeViewOn = false;
@@ -832,17 +852,20 @@ function exportToCSV(type) {
 // drove went with it. Positions still has its own copy of this feature
 // against the same shared PositionTag model.
 
-let orderModalAccountId = null;
+// Which (account, quantity) pairs the currently-open order can route
+// through - a single entry for an unmerged row, the whole merge group for
+// a merged one. Populated fresh every time the modal opens; re-read (not
+// re-fetched) whenever the Action toggle flips, since Add/Exit need
+// different account lists from the same underlying data.
+let orderModalHolders = [];
 
-// Opens the shared order dialog for one row's Add/Exit button (data
-// attributes carry account/symbol/exchange/qty and which action to start
-// on - see the .actions-cell buttons). Not wired up for merged rows (see
-// renderMergedView) since a merged row spans more than one account and has
-// no single target to route the order through.
+// Opens the shared order dialog for one row's Add/Exit button (data-holders
+// carries the account(s) this order can route through - a single entry for
+// an unmerged row, the whole merge group for a merged one, see
+// renderMergedView()).
 function openOrderModal(btn) {
-    orderModalAccountId = btn.dataset.accountId;
+    orderModalHolders = JSON.parse(btn.dataset.holders || '[]');
     document.getElementById('orderModalSymbol').textContent = btn.dataset.symbol;
-    document.getElementById('orderModalQty').value = btn.dataset.qty || 1;
     document.getElementById('orderModalExchange').value = btn.dataset.exchange;
     // Non-NSE/BSE holdings (rare, but possible via a broker's own listing)
     // stay locked to their real exchange rather than offering a switch that
@@ -870,6 +893,58 @@ function setOrderModalAction(action) {
     actionLabel.className = 'font-mono ' + (action === 'BUY' ? 'text-success' : 'text-error');
     submitBtn.textContent = 'Place ' + action + ' Order';
     submitBtn.className = 'btn btn-sm ' + (action === 'BUY' ? 'bg-green-600 hover:bg-green-700 border-green-600 text-white' : 'bg-red-600 hover:bg-red-700 border-red-600 text-white');
+    populateOrderModalAccounts(action);
+}
+
+// Add always offers every active account (buying doesn't require an
+// existing position); Exit is scoped to orderModalHolders - just this
+// account for an unmerged row, or every account in the group for a merged
+// one, so you can never submit a sell through an account that doesn't
+// actually hold the position. Tries to keep the same account selected
+// across a BUY<->SELL toggle inside the already-open modal if it's still a
+// valid choice in the new list, rather than always resetting to the
+// default.
+function populateOrderModalAccounts(action) {
+    const select = document.getElementById('orderModalAccount');
+    const previousValue = select.value;
+    const options = action === 'BUY' ? ALL_ACCOUNTS : orderModalHolders;
+    select.innerHTML = options.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+
+    const stillValid = options.find(a => String(a.id) === previousValue);
+    let defaultId;
+    if (stillValid) {
+        defaultId = stillValid.id;
+    } else {
+        // Merged row: the user's primary account if it's one of the
+        // holders, else whichever holder came first. Unmerged row: holders
+        // has exactly one entry, so this always resolves to it.
+        const primary = orderModalHolders.find(h => h.id === PRIMARY_ACCOUNT_ID);
+        const fallback = orderModalHolders[0] || options[0];
+        defaultId = primary ? primary.id : (fallback ? fallback.id : null);
+    }
+    select.value = defaultId;
+    syncOrderModalQuantityFromAccount(action);
+}
+
+function onOrderModalAccountChange() {
+    const action = document.getElementById('orderModalBuyBtn').dataset.selected === '1' ? 'BUY' : 'SELL';
+    syncOrderModalQuantityFromAccount(action);
+}
+
+// Add's quantity is deliberately left for the user to type - there's no
+// natural default for "how many more to buy" the way there is for Exit
+// (that account's actual holding). Exit's quantity re-syncs every time the
+// Account dropdown changes, so switching from arsalan (30) to iram (37)
+// mid-flow can't leave a stale, wrong-for-this-account number behind.
+function syncOrderModalQuantityFromAccount(action) {
+    const qtyInput = document.getElementById('orderModalQty');
+    if (action === 'BUY') {
+        qtyInput.value = '';
+        return;
+    }
+    const selectedId = document.getElementById('orderModalAccount').value;
+    const holder = orderModalHolders.find(h => String(h.id) === String(selectedId));
+    qtyInput.value = holder ? holder.quantity : '';
 }
 
 function updateOrderModalPriceFields() {
@@ -885,6 +960,7 @@ async function submitOrderModal() {
     errorEl.classList.add('hidden');
 
     const action = document.getElementById('orderModalBuyBtn').dataset.selected === '1' ? 'BUY' : 'SELL';
+    const accountId = document.getElementById('orderModalAccount').value;
     const symbol = document.getElementById('orderModalSymbol').textContent;
     const exchange = document.getElementById('orderModalExchange').value;
     const quantity = document.getElementById('orderModalQty').value;
@@ -900,7 +976,7 @@ async function submitOrderModal() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                account_id: orderModalAccountId,
+                account_id: accountId,
                 symbol: symbol,
                 exchange: exchange,
                 action: action,
@@ -970,6 +1046,12 @@ function renderMergedView() {
         let dayPnl = 0, dayPrevCloseVal = 0, hasDayData = false, dayChangePercent = null;
         const accountNames = [];
         const strategies = new Set();
+        // One entry per account in this group, each with that account's OWN
+        // free quantity (not the merged total) - feeds the order modal's
+        // Exit account list and the qty-autosync when switching between
+        // them, so selling "all 67" through one account that only holds 30
+        // isn't possible to accidentally submit.
+        const holders = [];
         group.forEach(row => {
             const q = parseFloat(row.dataset.qty) || 0;
             qty += q;
@@ -992,6 +1074,13 @@ function renderMergedView() {
             }
             if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
             if (row.dataset.strategy) strategies.add(row.dataset.strategy);
+            if (row.dataset.accountId) {
+                holders.push({
+                    id: parseInt(row.dataset.accountId, 10),
+                    name: row.dataset.accountName || '',
+                    quantity: parseFloat(row.dataset.freeqty) || 0,
+                });
+            }
             row.classList.add('hidden', 'merge-hidden');
         });
         const avgPrice = qty !== 0 ? weightedAvgNum / qty : 0;
@@ -1025,15 +1114,16 @@ function renderMergedView() {
         // tag-trigger element in the row to replace, since the Symbol cell
         // no longer has one.
 
-        // Add/Exit needs one
-        // account to route the order through, which a merged row doesn't
-        // have. Show a plain dash instead of silently keeping the first
-        // account's buttons (which would place the order on the wrong
-        // account without any indication).
-        const actionsCell = merged.querySelector('.actions-cell');
-        if (actionsCell) {
-            actionsCell.innerHTML = '<span class="text-xs text-base-content/30">-</span>';
-        }
+        // Add/Exit now works on a merged row too, via the order modal's
+        // Account dropdown - overwrite the cloned buttons' data-holders
+        // (which right now still just holds group[0]'s single account,
+        // copied along with everything else by cloneNode) with the whole
+        // group, so Exit's account list covers every account actually
+        // holding this symbol, not only the first one.
+        const holdersJson = JSON.stringify(holders);
+        merged.querySelectorAll('.actions-cell button[data-holders]').forEach(btn => {
+            btn.dataset.holders = holdersJson;
+        });
 
         // Free/T1/pledged quantities each sum independently rather than
         // collapsing into one blended number - a stock pledged 100 on one
