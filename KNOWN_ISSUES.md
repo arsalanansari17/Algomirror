@@ -11,6 +11,7 @@ change, or whenever one of these actually bites.
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
 | 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
 | 5 | 🟡 Low (feature gap) | Holdings — Account column removed, needs a new home | Open |
+| 6 | 🟡 Low (feature gap) | Holdings — "Exit from all accounts" deferred | Open |
 
 ---
 
@@ -180,3 +181,38 @@ merge-account-names logic).
 
 **Proposed fix:** none chosen yet - revisit when this is actually missed
 in practice, or the next time multi-account Holdings work is scoped.
+
+### 6. Holdings — "Exit from all accounts" deferred (2026-09-01)
+**Where:** `app/templates/trading/holdings.html`, `app/trading/routes.py`
+
+Discussed alongside the merged-row Add/Exit + account-picker feature
+(landed 2026-09-01): a merged position's Exit flow currently requires
+picking one account at a time from the Account dropdown, each with its
+own quantity and its own order submission. "Exit from all accounts" would
+place a full-exit sell order across every account in the merge group in
+one action - deliberately scoped out of that work at the user's request
+("let's skip exit from all, that can be taken later").
+
+**Why it's a separate piece of work, not a quick add-on:**
+- Needs a new **backend route** (not a client-side loop calling the
+  existing single-account `/holdings/order` N times) - matching the
+  pattern the Dashboard's "Close All Orphans" already uses: one request,
+  server-side loop over accounts, one aggregated response, so the
+  frontend gets a clean "2 of 2 exited" / "1 of 2 exited - iram failed:
+  <reason>" result instead of juggling N separate fetches and partial UI
+  states itself.
+- Needs a **partial-failure policy** - if one account's order succeeds and
+  another's fails (broker error, insufficient holdings, whatever), should
+  it attempt both and report both (matching "Close All Orphans"'s own
+  behavior), or something else? Not decided.
+- Needs its own **confirmation step** before firing multiple real sell
+  orders in one click across accounts - likely a modal similar to the
+  Dashboard's "Close All Positions" confirmation, not decided in detail.
+- The Quantity field doesn't make sense as a single editable number once
+  "all accounts" is selected (each account holds a different amount) -
+  would need to become a read-only summary of what's about to be sold
+  per account instead.
+
+**Proposed fix:** none chosen yet - scope this properly (new route,
+failure policy, confirmation UX) before starting, rather than bolting it
+onto the existing single-account order modal.
