@@ -294,6 +294,35 @@ def create_app(config_name=None, start_background_services=True):
         except OSError:
             return '0'
 
+    # Indian digit grouping (last 3 digits, then pairs - 22,33,362.89, not
+    # 2,233,362.89) - matches OpenAlgo's own number display, which gets this
+    # for free from `Intl.NumberFormat('en-IN', ...)` in the browser. Jinja/
+    # Python have no locale-independent equivalent, so it's built by hand
+    # here rather than depending on the server's OS locale being set to
+    # en_IN (which it generally isn't, and installing/toggling a system
+    # locale just for this is worse than 15 lines of pure string logic).
+    @app.template_filter('inr')
+    def format_inr(value):
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            value = 0.0
+        negative = value < 0
+        integer_part, decimal_part = f'{abs(value):.2f}'.split('.')
+        if len(integer_part) <= 3:
+            grouped = integer_part
+        else:
+            last3, rest = integer_part[-3:], integer_part[:-3]
+            pairs = []
+            while len(rest) > 2:
+                pairs.insert(0, rest[-2:])
+                rest = rest[:-2]
+            if rest:
+                pairs.insert(0, rest)
+            grouped = ','.join(pairs) + ',' + last3
+        result = f'{grouped}.{decimal_part}'
+        return f'-{result}' if negative else result
+
     # CSRF error handler - redirects to login with message when session expires
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):

@@ -2,13 +2,13 @@
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
-{% from 'macros/icons.html' import accounts as icon_merge %}
+{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down %}
 
 {# Matches OpenAlgo's own approach: one shared formatPercent()/formatCurrency()
    helper reused everywhere, instead of repeating the "+" if x >= 0 else ""
    sign-prefix logic inline at every call site (Holdings.tsx:53-55). #}
 {% macro signed_pct(value, undefined_text='0.00') %}{% if value is not defined or value is none %}{{ undefined_text }}%{% else %}{{ "+" if value >= 0 else "" }}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
-{% macro fmt_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}₹{{ "%.2f"|format(value) }}{% endif %}{% endmacro %}
+{% macro fmt_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}₹{{ value|inr }}{% endif %}{% endmacro %}
 {% macro fmt_pct(value, undefined_text=none) %}{% if value is not defined or value is none %}{{ undefined_text if undefined_text is not none else "0.00%" }}{% else %}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
 
 {% block title %}Holdings - AlgoMirror{% endblock %}
@@ -108,8 +108,11 @@
         <div class="{{ card() }} {{ 'hidden' if statistics.totaldaypnl is not defined }}" id="statDayPnlWrap">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Day's P&amp;L</div>
-                <div id="statDayPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 else 'text-error' }}">
-                    {{ fmt_currency(statistics.totaldaypnl) }}
+                {% set day_positive = statistics.totaldaypnl is defined and statistics.totaldaypnl >= 0 %}
+                <div id="statDayPnl" data-pv="pnl" class="{{ card_title() }} text-2xl flex items-center gap-1 {{ 'text-success' if day_positive else 'text-error' }}">
+                    <span id="statDayPnlIconUp" class="{{ '' if day_positive else 'hidden' }}">{{ trending_up('h-5 w-5') }}</span>
+                    <span id="statDayPnlIconDown" class="{{ 'hidden' if day_positive else '' }}">{{ trending_down('h-5 w-5') }}</span>
+                    <span id="statDayPnlText">{{ fmt_currency(statistics.totaldaypnl) }}</span>
                 </div>
                 <div id="statDayPnlPct" data-pv="pnl" class="{{ PNL_BADGE_SHAPE }} mt-1 {{ 'bg-green-500/10 text-green-600 border-green-500/30' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'bg-red-500/10 text-red-600 border-red-500/30' }}">{{ signed_pct(statistics.totaldaypnlpercentage) }}</div>
             </div>
@@ -117,8 +120,11 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Total P&amp;L</div>
-                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}">
-                    {{ fmt_currency(statistics.totalprofitandloss) }}
+                {% set total_positive = statistics.totalprofitandloss >= 0 %}
+                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl flex items-center gap-1 {{ 'text-success' if total_positive else 'text-error' }}">
+                    <span id="statTotalPnlIconUp" class="{{ '' if total_positive else 'hidden' }}">{{ trending_up('h-5 w-5') }}</span>
+                    <span id="statTotalPnlIconDown" class="{{ 'hidden' if total_positive else '' }}">{{ trending_down('h-5 w-5') }}</span>
+                    <span id="statTotalPnlText">{{ fmt_currency(statistics.totalprofitandloss) }}</span>
                 </div>
                 <div id="statTotalPnlPct" data-pv="pnl" class="{{ PNL_BADGE_SHAPE }} mt-1 {{ 'bg-green-500/10 text-green-600 border-green-500/30' if statistics.totalpnlpercentage >= 0 else 'bg-red-500/10 text-red-600 border-red-500/30' }}">{{ signed_pct(statistics.totalpnlpercentage) }}</div>
             </div>
@@ -152,9 +158,11 @@
                             <th>Account</th>
                             {% endif %}
                             <th class="cursor-pointer select-none" onclick="sortHoldings('symbol')">Symbol <span class="sort-arrow" data-col="symbol"></span></th>
+                            <th>Exchange</th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('qty')">Quantity <span class="sort-arrow" data-col="qty"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('avgprice')">Avg. Price <span class="sort-arrow" data-col="avgprice"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('ltp')">LTP <span class="sort-arrow" data-col="ltp"></span></th>
+                            <th>Product</th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('invested')">Invested <span class="sort-arrow" data-col="invested"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('current')">Current <span class="sort-arrow" data-col="current"></span></th>
                             <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnl')">P&L <span class="sort-arrow" data-col="pnl"></span></th>
@@ -217,6 +225,7 @@
                                     </button>
                                 </div>
                             </td>
+                            <td class="exchange-cell"><span class="{{ badge('outline') }}">{{ holding.exchange }}</span></td>
                             <td class="qty-cell font-mono text-right" data-pv="qty">
                                 <span class="qty-badges">
                                     {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: {{ t1|int }}</span>{% endif %}
@@ -226,6 +235,7 @@
                             </td>
                             <td class="avgprice-cell font-mono text-right" data-pv="avgprice">{{ fmt_currency(holding.average_price|float if holding.average_price else none) }}</td>
                             <td class="ltp-cell font-mono text-right">{{ fmt_currency(holding.ltp|float if holding.ltp else none) }}</td>
+                            <td class="product-cell"><span class="{{ badge('secondary') }}">{{ holding.product }}</span></td>
                             <td class="invested-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.invested) }}</td>
                             <td class="current-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.current) }}</td>
                             <td class="pnl-cell font-mono text-right {{ 'text-success' if holding.pnl|float >= 0 else 'text-error' }}" data-pv="pnl">
@@ -263,7 +273,8 @@
                     </tbody>
                     <tfoot>
                         <tr class="font-bold bg-base-200">
-                            <td colspan="{{ 3 if not single_account else 2 }}" class="text-right">Total:</td>
+                            <td colspan="{{ 4 if not single_account else 3 }}" class="text-right">Total:</td>
+                            <td></td>
                             <td></td>
                             <td></td>
                             <td id="footInvested" class="font-mono text-right" data-pv="value">{{ fmt_currency(statistics.totalinvvalue) }}</td>
@@ -465,6 +476,13 @@
 <script>
 const HOLDINGS_STORAGE_KEY = 'algomirror_holdings_prefs';
 
+// Indian digit grouping (22,33,362.89, not 2,233,362.89) - matches
+// OpenAlgo's own makeFormatCurrency(), and the server-rendered `inr` Jinja
+// filter these client-side recomputes need to stay visually identical to
+// on refresh/filter/merge. Top-level (not a recomputeSummaryStats() local)
+// since renderMergedView() needs it too.
+const formatINR = (value) => '₹' + value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 let holdingsFilters = { hasT1: false, hasPledged: false, strategy: [] };
 let mergeViewOn = false;
 let allocationBasis = 'current';
@@ -585,6 +603,16 @@ function recomputeSummaryStats() {
         const el = document.getElementById(id);
         if (el) { el.classList.toggle('text-success', value >= 0); el.classList.toggle('text-error', value < 0); }
     };
+    // statTotalPnl/statDayPnl carry a TrendingUp/TrendingDown icon alongside
+    // the number (matches OpenAlgo's own Holdings stat cards) - swap via
+    // hidden-class toggle on the pre-rendered up/down spans rather than
+    // setText(), which would wipe the icon along with the number.
+    const setTrendIcon = (baseId, value) => {
+        const up = document.getElementById(baseId + 'IconUp');
+        const down = document.getElementById(baseId + 'IconDown');
+        if (up) up.classList.toggle('hidden', value < 0);
+        if (down) down.classList.toggle('hidden', value >= 0);
+    };
     // For the pill-badge percentage elements (statTotalPnlPct/statDayPnlPct)
     // rather than plain colored text - toggles the full bg/text/border set
     // together so it never lands on a half-success/half-error combination.
@@ -600,14 +628,15 @@ function recomputeSummaryStats() {
         el.classList.toggle('border-red-500/30', !positive);
     };
 
-    setText('statInvested', '₹' + invested.toFixed(2));
-    setText('footInvested', '₹' + invested.toFixed(2));
-    setText('statCurrent', '₹' + current.toFixed(2));
-    setText('footCurrent', '₹' + current.toFixed(2));
-    setText('statTotalPnl', '₹' + pnl.toFixed(2));
-    setText('footPnl', '₹' + pnl.toFixed(2));
+    setText('statInvested', formatINR(invested));
+    setText('footInvested', formatINR(invested));
+    setText('statCurrent', formatINR(current));
+    setText('footCurrent', formatINR(current));
+    setText('statTotalPnlText', formatINR(pnl));
+    setText('footPnl', formatINR(pnl));
     setSign('statTotalPnl', pnl);
     setSign('footPnl', pnl);
+    setTrendIcon('statTotalPnl', pnl);
     setText('statTotalPnlPct', (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%');
     setText('footPnlPct', pnlPct.toFixed(2) + '%');
     setSignBadge('statTotalPnlPct', pnlPct);
@@ -617,8 +646,9 @@ function recomputeSummaryStats() {
     if (dayWrap && hasDayData) {
         dayWrap.classList.remove('hidden');
         const dayPct = dayPrevCloseValue !== 0 ? (dayPnl / dayPrevCloseValue * 100) : 0;
-        setText('statDayPnl', '₹' + dayPnl.toFixed(2));
+        setText('statDayPnlText', formatINR(dayPnl));
         setSign('statDayPnl', dayPnl);
+        setTrendIcon('statDayPnl', dayPnl);
         setText('statDayPnlPct', (dayPct >= 0 ? '+' : '') + dayPct.toFixed(2) + '%');
         setSignBadge('statDayPnlPct', dayPct);
         setText('footDayPnlPct', dayPct.toFixed(2) + '%');
@@ -1039,14 +1069,14 @@ function renderMergedView() {
         if (qtyValue) qtyValue.textContent = freeQty;
 
         const avgCell = merged.querySelector('.avgprice-cell');
-        if (avgCell) avgCell.textContent = '₹' + avgPrice.toFixed(2);
+        if (avgCell) avgCell.textContent = formatINR(avgPrice);
         const investedCell = merged.querySelector('.invested-cell');
-        if (investedCell) investedCell.textContent = '₹' + invested.toFixed(2);
+        if (investedCell) investedCell.textContent = formatINR(invested);
         const currentCell = merged.querySelector('.current-cell');
-        if (currentCell) currentCell.textContent = '₹' + current.toFixed(2);
+        if (currentCell) currentCell.textContent = formatINR(current);
         const pnlCell = merged.querySelector('.pnl-cell');
         if (pnlCell) {
-            pnlCell.textContent = '₹' + pnl.toFixed(2);
+            pnlCell.textContent = formatINR(pnl);
             pnlCell.classList.toggle('text-success', pnl >= 0);
             pnlCell.classList.toggle('text-error', pnl < 0);
         }
