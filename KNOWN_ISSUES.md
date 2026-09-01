@@ -10,6 +10,7 @@ change, or whenever one of these actually bites.
 | 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Open |
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
 | 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
+| 5 | 🟡 Low (feature gap) | Holdings — Account column removed, needs a new home | Open |
 
 ---
 
@@ -146,3 +147,36 @@ need a live-quote/WebSocket layer for Holdings before any of this is
 worth building - that's a real feature project, not a quick fix, and
 should get its own scoping pass before starting. The fourth is a one-line
 fix whenever someone's already touching this file for something else.
+
+### 5. Holdings — Account column removed (2026-09-01), needs a new home
+**Where:** `app/templates/trading/holdings.html`
+
+OpenAlgo's own Holdings table has no Account column at all (it's a
+single-account page by design), and this column was an AlgoMirror-only
+addition to identify which account a row belongs to when viewing "All
+Accounts" or several selected accounts. Removed at the user's request to
+get closer to OpenAlgo's real table shape, but the underlying need -
+knowing which account owns a given holding when more than one is in
+view - doesn't go away, so this needs a new home rather than staying
+gone for good.
+
+The account/broker data is still available for this: each `<tr>` carries
+`data-account-name` and `data-account-broker`, and `holding.account_id`/
+`holding.account_name`/`holding.broker` are still passed through in
+`holdings_data` server-side (nothing was removed from the Python side,
+only the rendered column and its dead-code cleanup in `renderMergedView()`'s
+merge-account-names logic).
+
+**Candidate places to resurface it (not decided, not scoped):**
+- A small colored dot/initial next to the Symbol cell (matches the
+  existing `account_dot()` macro used elsewhere, e.g. Orderbook/Tradebook's
+  Account column, before this removal) - lowest-effort, likely closest to
+  what was here before.
+- A tooltip/title attribute on the Symbol cell showing account + broker on
+  hover - zero extra visual footprint, but discoverability is worse.
+- Grouping the table by account when more than one is selected, instead of
+  a per-row indicator at all - a bigger restructure, probably overkill for
+  this.
+
+**Proposed fix:** none chosen yet - revisit when this is actually missed
+in practice, or the next time multi-account Holdings work is scoped.

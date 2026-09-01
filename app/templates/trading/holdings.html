@@ -1,5 +1,4 @@
 {% extends "layout.html" %}
-{% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
 {% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down, arrow_up_down, arrow_up, arrow_down %}
@@ -176,9 +175,6 @@
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            {% if not single_account %}
-                            <th class="font-medium text-foreground">Account</th>
-                            {% endif %}
                             {{ sortable_th('symbol', 'Trading Symbol', align_right=False) }}
                             <th class="font-medium text-foreground">Exchange</th>
                             {{ sortable_th('qty', 'Quantity') }}
@@ -217,18 +213,11 @@
                             data-dayprevcloseval="{{ holding.day_prevclose_value if holding.day_prevclose_value is defined else '' }}"
                             data-allocation="{{ holding.allocation }}"
                             data-strategy="{{ holding.strategy or '' }}"
-                            data-account-name="{{ holding.account_name }}">
-                            {% if not single_account %}
-                            <td class="account-cell">
-                                <div class="flex items-center gap-2">
-                                    {{ account_dot(holding.account_id, holding.account_name + ' · ' + holding.broker) }}
-                                    <div data-pv="account">
-                                        <div class="text-xs font-medium account-name-text">{{ holding.account_name }}</div>
-                                        <div class="text-xs opacity-50">{{ holding.broker }}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            {% endif %}
+                            data-account-name="{{ holding.account_name }}"
+                            data-account-broker="{{ holding.broker }}">
+                            {# Account column removed - see KNOWN_ISSUES.md for where this
+                               info should resurface (account/broker still carried on the
+                               row via data-* attributes for that future work). #}
                             <td class="font-medium symbol-cell">
                                 <div class="flex items-center gap-2">
                                     <span>{{ holding.symbol }}</span>
@@ -316,7 +305,7 @@
                                it), this cell had nothing of its own to win that
                                inheritance fight, so it rendered bold when OpenAlgo's
                                real "Total:" label isn't. #}
-                            <td colspan="{{ 4 if not single_account else 3 }}" class="text-right font-normal text-muted-foreground">Total:</td>
+                            <td colspan="3" class="text-right font-normal text-muted-foreground">Total:</td>
                             <td></td>
                             <td></td>
                             <td></td>
@@ -1082,8 +1071,9 @@ function renderMergedView() {
             merged.dataset.daychangepercent = 0;
         }
 
-        const acctCell = merged.querySelector('.account-cell');
-        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium" data-pv="account">${accountNames.join(', ')}</div>`;
+        // accountNames is still collected above (kept for the future work
+        // noted in KNOWN_ISSUES.md on where to resurface it) but no longer
+        // rendered into a dedicated column - there isn't one anymore.
 
         // A merged row spans more than one account, so there's no single
         // (account, symbol) left to tag - replace the clickable trigger with
