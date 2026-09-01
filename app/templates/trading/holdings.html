@@ -39,7 +39,7 @@
    since losing that feedback entirely would be a real usability regression for a
    cosmetic-only reason - the row order was already the only feedback, and column
    header parity was the actual ask, not removing an affordance. #}
-{% macro sortable_th(col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50{{ ' text-right' if align_right }}" onclick="sortHoldings('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}
+{% macro sortable_th(col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50 font-medium text-foreground{{ ' text-right' if align_right }}" onclick="sortHoldings('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}
 <datalist id="strategyNamesList">
     {% for name in strategy_names %}
     <option value="{{ name }}"></option>
@@ -177,21 +177,21 @@
                     <thead>
                         <tr>
                             {% if not single_account %}
-                            <th>Account</th>
+                            <th class="font-medium text-foreground">Account</th>
                             {% endif %}
                             {{ sortable_th('symbol', 'Trading Symbol', align_right=False) }}
-                            <th>Exchange</th>
+                            <th class="font-medium text-foreground">Exchange</th>
                             {{ sortable_th('qty', 'Quantity') }}
                             {{ sortable_th('avgprice', 'Avg. Price') }}
                             {{ sortable_th('ltp', 'LTP') }}
-                            <th>Product</th>
+                            <th class="font-medium text-foreground">Product</th>
                             {{ sortable_th('invested', 'Invested') }}
                             {{ sortable_th('current', 'Current') }}
                             {{ sortable_th('pnl', 'P&L') }}
                             {{ sortable_th('pnlpercent', 'P&L %') }}
                             {{ sortable_th('daychangepercent', 'Day Chg %') }}
                             {{ sortable_th('allocation', 'Allocation') }}
-                            <th class="text-center">Actions</th>
+                            <th class="text-center font-medium text-foreground">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="holdingsTbody">
@@ -338,22 +338,27 @@
     {% endif %}
 
     {% else %}
-    <!-- No Holdings -->
+    <!-- No Holdings - matches OpenAlgo's real EmptyState component exactly
+         (components/ui/empty-state.tsx): flex column, h-12 icon at /50
+         opacity, text-lg font-medium title, text-sm description - not the
+         much larger ad-hoc block this used to be (h-20 icon, text-2xl
+         font-bold title, unsized description). -->
     <div class="{{ card() }}">
-        <div class="{{ card_content() }} text-center py-16">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <h2 class="text-2xl font-bold mb-2">No Holdings Found</h2>
-            <p class="text-muted-foreground max-w-md mx-auto">
-                {% if accounts|length == 0 %}
-                You need to add a trading account first to view holdings.
-                {% else %}
-                You don't have any holdings in your trading accounts.
-                {% endif %}
-            </p>
+        <div class="{{ card_content() }}">
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-muted-foreground/50 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <h3 class="text-lg font-medium">No Holdings Found</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    {% if accounts|length == 0 %}
+                    You need to add a trading account first to view holdings.
+                    {% else %}
+                    You don't have any holdings in your trading accounts.
+                    {% endif %}
+                </p>
             {% if accounts|length == 0 %}
-            <div class="mt-6">
+            <div class="mt-4">
                 <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -362,6 +367,7 @@
                 </a>
             </div>
             {% endif %}
+            </div>
         </div>
     </div>
     {% endif %}
@@ -370,7 +376,7 @@
 <!-- Filters Dialog -->
 <dialog id="holdingsFiltersModal" class="modal">
     <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-1">Holdings Filters</h3>
+        <h3 class="font-semibold text-lg leading-none mb-1">Holdings Filters</h3>
         <p class="text-sm text-base-content/60 mb-4">Configure filters and how portfolio metrics are calculated</p>
 
         <div class="space-y-2 mb-5">
@@ -420,7 +426,7 @@
      per-holding info the popup grows to show. -->
 <dialog id="tagModal" class="modal">
     <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-lg mb-1">Tag <span id="tagModalSymbol" class="font-mono"></span></h3>
+        <h3 class="font-semibold text-lg leading-none mb-1">Tag <span id="tagModalSymbol" class="font-mono"></span></h3>
         <p class="text-sm text-base-content/60 mb-4">Assign a strategy to this holding.</p>
         <input type="text" id="tagModalInput" list="strategyNamesList" class="input input-bordered w-full" placeholder="Strategy name...">
         <div class="modal-action">
@@ -439,7 +445,7 @@
      a delivery position, but stays editable for an intraday exit. -->
 <dialog id="orderModal" class="modal">
     <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-lg mb-1">
+        <h3 class="font-semibold text-lg leading-none mb-1">
             Place Order - <span id="orderModalAction" class="font-mono"></span>
             <span id="orderModalSymbol" class="text-muted-foreground font-normal text-sm"></span>
         </h3>
