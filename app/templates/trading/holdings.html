@@ -39,11 +39,6 @@
    cosmetic-only reason - the row order was already the only feedback, and column
    header parity was the actual ask, not removing an affordance. #}
 {% macro sortable_th(col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50 font-medium text-foreground{{ ' text-right' if align_right }}" onclick="sortHoldings('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}
-<datalist id="strategyNamesList">
-    {% for name in strategy_names %}
-    <option value="{{ name }}"></option>
-    {% endfor %}
-</datalist>
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -129,7 +124,7 @@
                    `flex items-center gap-2` wrapping both groups), not a
                    value on one line with the badge stacked below it. #}
                 <div class="{{ card_title() }} text-2xl flex items-center gap-2">
-                    <div id="statDayPnl" data-pv="pnl" class="flex items-center gap-1 {{ 'text-success' if day_positive else 'text-error' }}">
+                    <div id="statDayPnl" data-pv="pnl" class="flex items-center gap-1 {{ 'text-green-600' if day_positive else 'text-red-600' }}">
                         <span id="statDayPnlIconUp" class="{{ '' if day_positive else 'hidden' }}">{{ trending_up('h-5 w-5') }}</span>
                         <span id="statDayPnlIconDown" class="{{ 'hidden' if day_positive else '' }}">{{ trending_down('h-5 w-5') }}</span>
                         <span id="statDayPnlText">{{ fmt_currency(statistics.totaldaypnl) }}</span>
@@ -143,7 +138,7 @@
                 <div class="{{ card_description() }}">Total P&amp;L</div>
                 {% set total_positive = statistics.totalprofitandloss >= 0 %}
                 <div class="{{ card_title() }} text-2xl flex items-center gap-2">
-                    <div id="statTotalPnl" data-pv="pnl" class="flex items-center gap-1 {{ 'text-success' if total_positive else 'text-error' }}">
+                    <div id="statTotalPnl" data-pv="pnl" class="flex items-center gap-1 {{ 'text-green-600' if total_positive else 'text-red-600' }}">
                         <span id="statTotalPnlIconUp" class="{{ '' if total_positive else 'hidden' }}">{{ trending_up('h-5 w-5') }}</span>
                         <span id="statTotalPnlIconDown" class="{{ 'hidden' if total_positive else '' }}">{{ trending_down('h-5 w-5') }}</span>
                         <span id="statTotalPnlText">{{ fmt_currency(statistics.totalprofitandloss) }}</span>
@@ -218,31 +213,28 @@
                             {# Account column removed - see KNOWN_ISSUES.md for where this
                                info should resurface (account/broker still carried on the
                                row via data-* attributes for that future work). #}
-                            <td class="font-medium symbol-cell">
-                                <div class="flex items-center gap-2">
-                                    <span>{{ holding.symbol }}</span>
-                                    <button type="button"
-                                            class="tag-trigger"
-                                            data-account-id="{{ holding.account_id }}"
-                                            data-symbol="{{ holding.symbol }}"
-                                            data-strategy="{{ holding.strategy or '' }}"
-                                            onclick="openTagModal(this)"
-                                            title="{{ 'Tagged: ' + holding.strategy if holding.strategy else 'Tag this holding with a strategy' }}">
-                                        {% if holding.strategy %}
-                                        <span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">{{ holding.strategy }}</span>
-                                        {% else %}
-                                        <span class="text-xs text-base-content/40 border border-dashed border-base-content/30 rounded-full px-1.5 hover:text-base-content/70 hover:border-base-content/50">+ Tag</span>
-                                        {% endif %}
-                                    </button>
-                                </div>
-                            </td>
+                            {# Tag trigger removed from this cell - matches OpenAlgo's plain
+                               Symbol cell exactly. Tagging itself isn't gone (Positions still
+                               has its own trigger against the same shared PositionTag model,
+                               keyed on account_id+symbol - a tag set there still shows up and
+                               is filterable here), only the create-a-tag UI on Holdings
+                               specifically. #}
+                            <td class="font-medium symbol-cell">{{ holding.symbol }}</td>
                             <td class="exchange-cell"><span class="{{ badge('outline') }}">{{ holding.exchange }}</span></td>
-                            <td class="qty-cell font-mono text-right" data-pv="qty">
-                                <span class="qty-badges">
-                                    {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: {{ t1|int }}</span>{% endif %}
-                                    {% if pledged > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">P: {{ pledged|int }}</span>{% endif %}
+                            {# Matches OpenAlgo's QuantityCell exactly: badges + the free-qty
+                               number all inside ONE inline-flex span with a gap, plus
+                               whitespace-nowrap on the cell (OpenAlgo's base TableCell has this
+                               by default; DaisyUI's plain <td> doesn't) - without both, the
+                               browser was free to wrap the pledged/T1 badge onto its own line
+                               above the quantity number whenever the column got tight. #}
+                            <td class="qty-cell font-mono text-right whitespace-nowrap" data-pv="qty">
+                                <span class="inline-flex items-center gap-1.5">
+                                    <span class="qty-badges inline-flex items-center gap-1.5">
+                                        {% if t1 > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">T1: {{ t1|int }}</span>{% endif %}
+                                        {% if pledged > 0 %}<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">P: {{ pledged|int }}</span>{% endif %}
+                                    </span>
+                                    <span class="qty-value">{{ holding.quantity }}</span>
                                 </span>
-                                <span class="qty-value">{{ holding.quantity }}</span>
                             </td>
                             <td class="avgprice-cell font-mono text-right" data-pv="avgprice">{{ fmt_currency(holding.average_price|float) if holding.average_price else "-" }}</td>
                             <td class="ltp-cell font-mono text-right">{{ fmt_currency(holding.ltp|float) if holding.ltp else "-" }}</td>
@@ -305,19 +297,27 @@
                                it), this cell had nothing of its own to win that
                                inheritance fight, so it rendered bold when OpenAlgo's
                                real "Total:" label isn't. #}
-                            <td colspan="3" class="text-right font-normal text-muted-foreground">Total:</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
+                            {# colspan=6 matches Holdings.tsx exactly (colSpan={6}), covering
+                               Symbol+Exchange+Quantity+Avg.Price+LTP+Product - not 3 columns
+                               plus three separate empty <td>s, which consumed the same total
+                               width but right-aligned "Total:" within just the first 3 cells,
+                               leaving it stranded under Quantity with visible empty space
+                               before Invested instead of hugging the boundary right next to
+                               it, the way a single wide colspan cell does. #}
+                            <td colspan="6" class="text-right font-normal text-muted-foreground">Total:</td>
                             <td id="footInvested" class="font-mono text-right font-bold" data-pv="value">{{ fmt_currency(statistics.totalinvvalue) }}</td>
                             <td id="footCurrent" class="font-mono text-right font-bold" data-pv="value">{{ fmt_currency(statistics.totalholdingvalue) }}</td>
-                            <td id="footPnl" class="font-mono text-right font-bold {{ 'text-success' if statistics.totalprofitandloss >= 0 else 'text-error' }}" data-pv="pnl">
+                            {# text-green-600/text-red-600 (literal), not text-success/text-error
+                               (DaisyUI tokens) - matches Holdings.tsx's real footer cells
+                               exactly, same fix already applied to the per-row P&L cells above
+                               but missed here when the footer was first ported. #}
+                            <td id="footPnl" class="font-mono text-right font-bold {{ 'text-green-600' if statistics.totalprofitandloss >= 0 else 'text-red-600' }}" data-pv="pnl">
                                 {{ signed_currency(statistics.totalprofitandloss) }}
                             </td>
-                            <td id="footPnlPct" class="text-right font-bold {{ 'text-success' if statistics.totalpnlpercentage >= 0 else 'text-error' }}" data-pv="pnl">
+                            <td id="footPnlPct" class="text-right font-bold {{ 'text-green-600' if statistics.totalpnlpercentage >= 0 else 'text-red-600' }}" data-pv="pnl">
                                 {{ signed_pct(statistics.totalpnlpercentage) }}
                             </td>
-                            <td id="footDayPnlPct" class="text-right font-bold {{ 'text-success' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-error' if statistics.totaldaypnlpercentage is defined else 'text-base-content/50' }}">
+                            <td id="footDayPnlPct" class="text-right font-bold {{ 'text-green-600' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'text-red-600' if statistics.totaldaypnlpercentage is defined else 'text-muted-foreground' }}">
                                 {{ signed_pct(statistics.totaldaypnlpercentage, undefined_text="-") }}
                             </td>
                             <td class="font-mono text-right font-bold text-muted-foreground">100.00%</td>
@@ -412,24 +412,6 @@
         <div class="modal-action">
             <button type="button" class="btn btn-ghost btn-sm" onclick="clearHoldingsFilters()">Clear All</button>
             <button type="button" class="btn btn-primary btn-sm" onclick="holdingsFiltersModal.close()">Done</button>
-        </div>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>close</button>
-    </form>
-</dialog>
-
-<!-- Tag Dialog - reused for every row; also the future home for other
-     per-holding info the popup grows to show. -->
-<dialog id="tagModal" class="modal">
-    <div class="modal-box max-w-sm">
-        <h3 class="font-semibold text-lg leading-none mb-1">Tag <span id="tagModalSymbol" class="font-mono"></span></h3>
-        <p class="text-sm text-base-content/60 mb-4">Assign a strategy to this holding.</p>
-        <input type="text" id="tagModalInput" list="strategyNamesList" class="input input-bordered w-full" placeholder="Strategy name...">
-        <div class="modal-action">
-            <button type="button" id="tagModalRemoveBtn" class="btn btn-ghost btn-sm text-error mr-auto hidden" onclick="removeTagFromModal()">Remove Tag</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="tagModal.close()">Cancel</button>
-            <button type="button" class="btn btn-primary btn-sm" onclick="saveTagFromModal()">Save</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">
@@ -638,9 +620,13 @@ function recomputeSummaryStats() {
     const pnlPct = invested !== 0 ? (pnl / invested * 100) : 0;
 
     const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    // text-green-600/text-red-600 (literal), not text-success/text-error -
+    // matches every server-rendered P&L color on this page (stat cards,
+    // footer), all of which use OpenAlgo's real literal colors, not
+    // DaisyUI's semantic tokens.
     const setSign = (id, value) => {
         const el = document.getElementById(id);
-        if (el) { el.classList.toggle('text-success', value >= 0); el.classList.toggle('text-error', value < 0); }
+        if (el) { el.classList.toggle('text-green-600', value >= 0); el.classList.toggle('text-red-600', value < 0); }
     };
     // statTotalPnl/statDayPnl carry a TrendingUp/TrendingDown icon alongside
     // the number (matches OpenAlgo's own Holdings stat cards) - swap via
@@ -840,52 +826,11 @@ function exportToCSV(type) {
     document.body.removeChild(link);
 }
 
-let tagModalAccountId = null;
-let tagModalSymbol = null;
-
-// Opens the shared tag dialog for one row's button (data attributes carry
-// which account/symbol it's for - see the .tag-trigger button in the
-// Symbol cell). Not wired up for merged rows (see renderMergedView) since a
-// merged row spans more than one account and has no single target to tag.
-function openTagModal(btn) {
-    tagModalAccountId = btn.dataset.accountId;
-    tagModalSymbol = btn.dataset.symbol;
-    document.getElementById('tagModalSymbol').textContent = tagModalSymbol;
-    document.getElementById('tagModalInput').value = btn.dataset.strategy || '';
-    document.getElementById('tagModalRemoveBtn').classList.toggle('hidden', !btn.dataset.strategy);
-    tagModal.showModal();
-}
-
-function saveTagFromModal() {
-    const value = document.getElementById('tagModalInput').value.trim();
-    if (!value) { removeTagFromModal(); return; }
-    sendTagRequest("{{ url_for('trading.tag_holding') }}", { account_id: tagModalAccountId, symbol: tagModalSymbol, strategy: value });
-}
-
-function removeTagFromModal() {
-    sendTagRequest("{{ url_for('trading.untag_holding') }}", { account_id: tagModalAccountId, symbol: tagModalSymbol });
-}
-
-async function sendTagRequest(url, body) {
-    try {
-        const resp = await fetchWithCSRF(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        const data = await resp.json();
-        if (data.status !== 'success') {
-            alert(data.message || 'Failed to update tag');
-            return;
-        }
-        // Full reload rather than a partial DOM patch - the filter chip list
-        // and datalist suggestions are server-rendered from strategy_names,
-        // so a new/removed tag needs a fresh render to stay consistent.
-        location.reload();
-    } catch (e) {
-        alert('Failed to update tag');
-    }
-}
+// Tag creation/editing UI removed from Holdings (see the note on
+// symbol-cell above) - openTagModal()/saveTagFromModal()/
+// removeTagFromModal()/sendTagRequest() and the tagModal dialog they
+// drove went with it. Positions still has its own copy of this feature
+// against the same shared PositionTag model.
 
 let orderModalAccountId = null;
 
@@ -1075,20 +1020,12 @@ function renderMergedView() {
         // noted in KNOWN_ISSUES.md on where to resurface it) but no longer
         // rendered into a dedicated column - there isn't one anymore.
 
-        // A merged row spans more than one account, so there's no single
-        // (account, symbol) left to tag - replace the clickable trigger with
-        // plain badges for whichever strategies are present across the group.
-        const tagTrigger = merged.querySelector('.tag-trigger');
-        if (tagTrigger) {
-            const replacement = document.createElement('span');
-            replacement.className = 'flex items-center gap-1 flex-wrap';
-            replacement.innerHTML = strategies.size
-                ? Array.from(strategies).map(s => `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">${s}</span>`).join('')
-                : '<span class="text-xs text-base-content/30">-</span>';
-            tagTrigger.replaceWith(replacement);
-        }
+        // strategies is still collected above (same reasoning as
+        // accountNames) but no longer rendered anywhere - there's no more
+        // tag-trigger element in the row to replace, since the Symbol cell
+        // no longer has one.
 
-        // Same reasoning as the tag trigger above - Add/Exit needs one
+        // Add/Exit needs one
         // account to route the order through, which a merged row doesn't
         // have. Show a plain dash instead of silently keeping the first
         // account's buttons (which would place the order on the wrong
@@ -1105,8 +1042,8 @@ function renderMergedView() {
         const qtyBadges = merged.querySelector('.qty-badges');
         if (qtyBadges) {
             let html = '';
-            if (t1Qty > 0) html += `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">T1: ${t1Qty}</span>`;
-            if (pledgedQty > 0) html += `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal mr-1">P: ${pledgedQty}</span>`;
+            if (t1Qty > 0) html += `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">T1: ${t1Qty}</span>`;
+            if (pledgedQty > 0) html += `<span class="badge badge-sm bg-pink-500/10 text-pink-600 border border-pink-500/30 font-normal">P: ${pledgedQty}</span>`;
             qtyBadges.innerHTML = html;
         }
         const qtyValue = merged.querySelector('.qty-value');
