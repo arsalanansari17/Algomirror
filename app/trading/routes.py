@@ -427,7 +427,24 @@ def holdings():
     def enrich_holdings(holding_list, account):
         """Add account info and per-row Invested/Current value (using total
         quantity - free + T1 + pledged, since pledged/T1 shares are still
-        part of what you own and what you paid for them)."""
+        part of what you own and what you paid for them).
+
+        Also overwrites the broker's own 'pnl'/'pnlpercent' fields with
+        values derived from these same invested/current numbers, rather
+        than trusting the broker's separately-computed figures. The broker
+        computes its pnl using its own internal LTP snapshot, at whatever
+        instant that was, while 'current' here uses the LTP this request's
+        own multiquotes() call just fetched - two different snapshots of a
+        continuously-moving price. In a live market these will essentially
+        never agree by more than a few rupees, and the gap compounds
+        visibly once summed across a whole portfolio (confirmed live:
+        broker-pnl total off by ~2,344 from current-invested on an ~11L
+        portfolio) - exactly the kind of "the totals don't add up"
+        inconsistency a user will visually cross-check and notice. Deriving
+        pnl here instead guarantees Current - Invested == P&L by
+        construction, everywhere this row's data is displayed, at the cost
+        of no longer matching the broker's own dashboard to the last paisa
+        in a fast-moving market (it never really did anyway)."""
         for holding in holding_list:
             holding['account_name'] = account.account_name
             holding['account_id'] = account.id
@@ -442,10 +459,14 @@ def holdings():
                 holding['total_qty'] = total_qty
                 holding['invested'] = total_qty * avg_price
                 holding['current'] = total_qty * ltp
+                holding['pnl'] = holding['current'] - holding['invested']
+                holding['pnlpercent'] = (holding['pnl'] / holding['invested'] * 100) if holding['invested'] else 0
             except (ValueError, TypeError):
                 holding['total_qty'] = holding.get('quantity', 0)
                 holding['invested'] = 0
                 holding['current'] = 0
+                holding['pnl'] = 0
+                holding['pnlpercent'] = 0
 
     def attach_day_change(holding_list, account):
         """Day's P&L needs a previous close, which the holdings API doesn't
@@ -544,8 +565,10 @@ def holdings():
                 holding['strategy'] = tag
                 strategy_names.add(tag)
 
-    # Calculate statistics from the per-row invested/current values (accurate,
-    # includes T1/pledged quantity, avoids the old pnl/pnlpercent back-derivation)
+    # Calculate statistics from the per-row invested/current/pnl values set in
+    # enrich_holdings() above - all three derived from the same LTP snapshot,
+    # so this total is guaranteed self-consistent (totalprofitandloss ==
+    # totalholdingvalue - totalinvvalue by construction, not by coincidence).
     total_invvalue = sum(h.get('invested', 0) for h in holdings_data)
     total_holdingvalue = sum(h.get('current', 0) for h in holdings_data)
     total_pnl = sum(float(h.get('pnl', 0) or 0) for h in holdings_data)

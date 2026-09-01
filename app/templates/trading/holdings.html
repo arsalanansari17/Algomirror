@@ -2,7 +2,7 @@
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
-{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down %}
+{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down, arrow_up_down, arrow_up, arrow_down %}
 
 {# Matches OpenAlgo's own approach: one shared formatPercent()/formatCurrency()
    helper reused everywhere, instead of repeating the "+" if x >= 0 else ""
@@ -30,6 +30,16 @@
    utility classes in the same category have no defined winner - see the
    Positions merge-view fix for the same issue). #}
 {% set PNL_BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit' %}
+{# Matches Holdings.tsx's SortableHeader exactly: cursor-pointer + hover:bg-muted/50
+   on the <th> itself, an inner flex div (justified to the end for right-aligned
+   columns) holding the label then a sort-hint icon. Holdings.tsx's own version
+   always shows a static ArrowUpDown at 50% opacity with no directional swap: this
+   goes one step further and swaps to a directional Arrow icon once a column is
+   actually sorted (OrderBook.tsx/TradeBook.tsx's richer SortableHeader pattern),
+   since losing that feedback entirely would be a real usability regression for a
+   cosmetic-only reason - the row order was already the only feedback, and column
+   header parity was the actual ask, not removing an affordance. #}
+{% macro sortable_th(col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50{{ ' text-right' if align_right }}" onclick="sortHoldings('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}
 <datalist id="strategyNamesList">
     {% for name in strategy_names %}
     <option value="{{ name }}"></option>
@@ -169,18 +179,18 @@
                             {% if not single_account %}
                             <th>Account</th>
                             {% endif %}
-                            <th class="cursor-pointer select-none" onclick="sortHoldings('symbol')">Symbol <span class="sort-arrow" data-col="symbol"></span></th>
+                            {{ sortable_th('symbol', 'Trading Symbol', align_right=False) }}
                             <th>Exchange</th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('qty')">Quantity <span class="sort-arrow" data-col="qty"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('avgprice')">Avg. Price <span class="sort-arrow" data-col="avgprice"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('ltp')">LTP <span class="sort-arrow" data-col="ltp"></span></th>
+                            {{ sortable_th('qty', 'Quantity') }}
+                            {{ sortable_th('avgprice', 'Avg. Price') }}
+                            {{ sortable_th('ltp', 'LTP') }}
                             <th>Product</th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('invested')">Invested <span class="sort-arrow" data-col="invested"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('current')">Current <span class="sort-arrow" data-col="current"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnl')">P&L <span class="sort-arrow" data-col="pnl"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('pnlpercent')">P&L % <span class="sort-arrow" data-col="pnlpercent"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('daychangepercent')">Day Chg % <span class="sort-arrow" data-col="daychangepercent"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortHoldings('allocation')">Allocation <span class="sort-arrow" data-col="allocation"></span></th>
+                            {{ sortable_th('invested', 'Invested') }}
+                            {{ sortable_th('current', 'Current') }}
+                            {{ sortable_th('pnl', 'P&L') }}
+                            {{ sortable_th('pnlpercent', 'P&L %') }}
+                            {{ sortable_th('daychangepercent', 'Day Chg %') }}
+                            {{ sortable_th('allocation', 'Allocation') }}
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
@@ -763,9 +773,13 @@ function sortHoldings(col, silent) {
     });
     rows.forEach(row => tbody.appendChild(row));
 
-    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
-    const arrow = document.querySelector(`.sort-arrow[data-col="${col}"]`);
-    if (arrow) arrow.textContent = holdingsSort.dir === 'asc' ? '▲' : '▼';
+    // Reset every header to its default static hint icon, then swap the
+    // actively-sorted column's to a directional one - matches Holdings.tsx's
+    // SortableHeader shape (icon lives in the header, not a text glyph).
+    document.querySelectorAll('.sort-icon-default').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.sort-icon-up, .sort-icon-down').forEach(el => el.classList.add('hidden'));
+    document.querySelector(`.sort-icon-default[data-col="${col}"]`)?.classList.add('hidden');
+    document.querySelector(`.sort-icon-${holdingsSort.dir === 'asc' ? 'up' : 'down'}[data-col="${col}"]`)?.classList.remove('hidden');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
