@@ -23,6 +23,7 @@ Token names use the oaprimary/oasecondary/oaaccent prefix (not shadcn's
 bare primary/secondary/accent) because those bare names are already
 DaisyUI's own theme-color slots - see tailwind.config.js.
 #}
+{% from 'macros/icons.html' import arrow_up_down, arrow_up, arrow_down %}
 
 {% macro button(variant='default', size='default', class='') %}
 {%- set base = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/50" -%}
@@ -83,3 +84,24 @@ swapped safely for this.
 {% macro input(class='') %}
 {{- ("placeholder:text-muted-foreground selection:bg-oaprimary selection:text-oaprimary-foreground border-border h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-sm transition-colors outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:ring-2 focus-visible:ring-ring/50 " ~ class) | trim -}}
 {% endmacro %}
+
+{#
+Sortable table header cell, shared across every page with an OpenAlgo-style
+SortableHeader (Holdings/Positions/Orderbook/Tradebook all use the identical
+real component): cursor-pointer + hover:bg-muted/50 on the <th> itself, an
+inner flex div (justified to the end for right-aligned columns) holding the
+label then a sort-hint icon. OpenAlgo's own SortableHeader always shows a
+static ArrowUpDown at 50% opacity with no directional swap; this goes one
+step further and swaps to a directional Arrow icon once a column is
+actually sorted (matching OrderBook.tsx/TradeBook.tsx's own richer
+SortableHeader pattern instead), since losing that feedback entirely for a
+cosmetic-only reason would be a real usability regression, not just parity.
+Originally written once for Holdings, then found to be needed identically
+on Positions - moved here instead of copy-pasting a second time.
+
+Each caller's own JS sortX(col) function must toggle the matching
+.sort-icon-default/.sort-icon-up/.sort-icon-down elements (see holdings.html's
+sortHoldings() for the reference implementation) rather than setting
+textContent to a unicode glyph.
+#}
+{% macro sortable_th(sort_fn, col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50 font-medium text-foreground{{ ' text-right' if align_right }}" onclick="{{ sort_fn }}('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}

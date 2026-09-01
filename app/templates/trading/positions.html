@@ -1,8 +1,17 @@
 {% extends "layout.html" %}
 {% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
-{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
-{% from 'macros/icons.html' import pnl as icon_pnl, accounts as icon_merge %}
+{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input, sortable_th %}
+{% from 'macros/icons.html' import pnl as icon_pnl, accounts as icon_merge, trending_up, trending_down %}
+
+{# Same as Holdings.tsx's formatPercent()/formatCurrency() convention - see
+   holdings.html's identical macros. Positions had none of these at all
+   before (raw "%.2f"|format() everywhere), so it never got Indian digit
+   grouping either. #}
+{% macro signed_pct(value, undefined_text='0.00') %}{% if value is not defined or value is none %}{{ undefined_text }}%{% else %}{{ "+" if value >= 0 else "" }}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
+{% macro fmt_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}₹{{ value|inr }}{% endif %}{% endmacro %}
+{% macro signed_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}{{ "+" if value >= 0 else "" }}₹{{ value|inr }}{% endif %}{% endmacro %}
+{% macro fmt_pct(value, undefined_text=none) %}{% if value is not defined or value is none %}{{ undefined_text if undefined_text is not none else "0.00%" }}{% else %}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
 
 {% block title %}Positions - AlgoMirror{% endblock %}
 
@@ -115,20 +124,20 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Long</div>
-                <div class="{{ card_title() }} text-2xl text-success">{{ long_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-green-600">{{ long_count }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Short</div>
-                <div class="{{ card_title() }} text-2xl text-error">{{ short_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-red-600">{{ short_count }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Total P&amp;L</div>
-                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-success' if total_pnl >= 0 else 'text-error' }}">
-                    ₹{{ "%.2f"|format(total_pnl) }}
+                <div id="statTotalPnl" data-pv="pnl" class="{{ card_title() }} text-2xl {{ 'text-green-600' if total_pnl >= 0 else 'text-red-600' }}">
+                    {{ fmt_currency(total_pnl) }}
                 </div>
             </div>
         </div>
@@ -157,18 +166,18 @@
                     <thead>
                         <tr>
                             {% if not single_account %}
-                            <th>Account</th>
+                            <th class="font-medium text-foreground">Account</th>
                             {% endif %}
-                            <th class="cursor-pointer select-none" onclick="sortPositions('symbol')">Symbol <span class="sort-arrow" data-col="symbol"></span></th>
-                            <th>Exchange</th>
-                            <th>Product</th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortPositions('qty')">Qty <span class="sort-arrow" data-col="qty"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortPositions('avgprice')">Avg Price <span class="sort-arrow" data-col="avgprice"></span></th>
-                            <th class="text-right">LTP</th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortPositions('pnl')">P&L <span class="sort-arrow" data-col="pnl"></span></th>
-                            <th class="text-right cursor-pointer select-none" onclick="sortPositions('pnlpercent')">P&L % <span class="sort-arrow" data-col="pnlpercent"></span></th>
-                            <th class="text-right">Value</th>
-                            <th class="text-right">Action</th>
+                            {{ sortable_th('sortPositions', 'symbol', 'Symbol', align_right=False) }}
+                            <th class="font-medium text-foreground">Exchange</th>
+                            <th class="font-medium text-foreground">Product</th>
+                            {{ sortable_th('sortPositions', 'qty', 'Qty') }}
+                            {{ sortable_th('sortPositions', 'avgprice', 'Avg Price') }}
+                            <th class="text-right font-medium text-foreground">LTP</th>
+                            {{ sortable_th('sortPositions', 'pnl', 'P&L') }}
+                            {{ sortable_th('sortPositions', 'pnlpercent', 'P&L %') }}
+                            <th class="text-right font-medium text-foreground">Value</th>
+                            <th class="text-right font-medium text-foreground">Action</th>
                         </tr>
                     </thead>
                     <tbody id="positionsTbody">
@@ -199,7 +208,7 @@
                                 </div>
                             </td>
                             {% endif %}
-                            <td class="font-semibold symbol-cell">
+                            <td class="font-medium symbol-cell">
                                 {{ position.get('symbol', '') }}
                                 {% if is_closed %}<span class="{{ badge('outline') }} ml-1">Closed</span>{% endif %}
                             </td>
@@ -209,25 +218,25 @@
                                classes the way shadcn's cn()/twMerge does in the original. #}
                             <td><span class="{{ BADGE_SHAPE }} {{ EXCHANGE_COLORS.get(position.get('exchange', ''), 'text-foreground border-border') }}">{{ position.get('exchange', '') }}</span></td>
                             <td><span class="{{ BADGE_SHAPE }} {{ PRODUCT_COLORS.get(position.get('product', ''), 'text-foreground border-border') }}">{{ position.get('product', '') }}</span></td>
-                            <td class="font-mono text-right qty-cell {{ 'text-success' if qty > 0 else ('text-error' if qty < 0 else '') }}" data-pv="qty">
+                            {# Positions.tsx's Qty cell is font-medium, not font-mono - unlike
+                               Avg Price/LTP which genuinely are font-mono in the real source. #}
+                            <td class="text-right font-medium qty-cell {{ 'text-green-600' if qty > 0 else ('text-red-600' if qty < 0 else '') }}" data-pv="qty">
                                 {{ position.get('quantity', 0) }}
                             </td>
-                            <td class="font-mono text-right avgprice-cell" data-pv="avgprice">₹{{ "%.2f"|format(position.get('average_price', 0)|float) }}</td>
-                            <td class="font-mono text-right ltp-cell">₹{{ "%.2f"|format(position.get('ltp', 0)|float) }}</td>
-                            <td class="font-mono text-right pnl-cell {{ 'text-success' if position.get('pnl', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
+                            <td class="font-mono text-right avgprice-cell" data-pv="avgprice">{{ fmt_currency(position.get('average_price', 0)|float) }}</td>
+                            <td class="font-mono text-right ltp-cell">{{ fmt_currency(position.get('ltp', 0)|float) if position.get('ltp') is not none else '-' }}</td>
+                            {% set row_pnl_positive = position.get('pnl', 0)|float >= 0 %}
+                            <td class="text-right font-medium pnl-cell {{ 'text-green-600' if row_pnl_positive else 'text-red-600' }}" data-pv="pnl">
                                 <div class="flex items-center justify-end gap-1">
-                                    {% if position.get('pnl', 0)|float >= 0 %}
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                                    {% else %}
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0v-8m0 8l-8-8-4 4-6-6" /></svg>
-                                    {% endif %}
-                                    ₹{{ "%.2f"|format(position.get('pnl', 0)|float) }}
+                                    <span class="pnl-icon-up {{ '' if row_pnl_positive else 'hidden' }}">{{ trending_up('h-4 w-4') }}</span>
+                                    <span class="pnl-icon-down {{ 'hidden' if row_pnl_positive else '' }}">{{ trending_down('h-4 w-4') }}</span>
+                                    <span class="pnl-text">{{ fmt_currency(position.get('pnl', 0)|float) }}</span>
                                 </div>
                             </td>
-                            <td class="text-right pnlpercent-cell {{ 'text-success' if position.get('pnl_percentage', 0)|float >= 0 else 'text-error' }}" data-pv="pnl">
-                                {{ "%.2f"|format(position.get('pnl_percentage', 0)|float) }}%
+                            <td class="text-right pnlpercent-cell {{ 'text-green-600' if position.get('pnl_percentage', 0)|float >= 0 else 'text-red-600' }}" data-pv="pnl">
+                                {{ fmt_pct(position.get('pnl_percentage', 0)|float) }}
                             </td>
-                            <td class="font-mono text-right value-cell" data-pv="value">₹{{ "%.2f"|format(position.get('current_value', 0)|float) }}</td>
+                            <td class="font-mono text-right value-cell" data-pv="value">{{ fmt_currency(position.get('current_value', 0)|float) }}</td>
                             <td class="text-right action-cell">
                                 {% if not is_closed %}
                                 <button type="button"
@@ -255,22 +264,25 @@
     </div>
 
     {% else %}
-    <!-- No Positions -->
+    <!-- No Positions - matches OpenAlgo's real EmptyState component exactly
+         (see holdings.html's identical fix): flex column, h-12 icon at /50
+         opacity, text-lg font-medium title, text-sm description. -->
     <div class="{{ card() }}">
-        <div class="{{ card_content() }} text-center py-16">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto mb-4 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <h2 class="text-2xl font-bold mb-2">No Open Positions</h2>
-            <p class="text-muted-foreground max-w-md mx-auto">
-                {% if accounts|length == 0 %}
-                You need to add a trading account first to view positions.
-                {% else %}
-                You don't have any open positions in your trading accounts.
-                {% endif %}
-            </p>
+        <div class="{{ card_content() }}">
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-muted-foreground/50 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <h3 class="text-lg font-medium">No Open Positions</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    {% if accounts|length == 0 %}
+                    You need to add a trading account first to view positions.
+                    {% else %}
+                    You don't have any open positions in your trading accounts.
+                    {% endif %}
+                </p>
             {% if accounts|length == 0 %}
-            <div class="mt-6">
+            <div class="mt-4">
                 <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -279,6 +291,7 @@
                 </a>
             </div>
             {% endif %}
+            </div>
         </div>
     </div>
     {% endif %}
@@ -287,21 +300,21 @@
 <!-- Filters Dialog -->
 <dialog id="positionsFiltersModal" class="modal">
     <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-1">Position Filters</h3>
+        <h3 class="font-semibold text-lg leading-none mb-1">Position Filters</h3>
         <p class="text-sm text-base-content/60 mb-4">Configure grouping and filters</p>
 
         <div class="space-y-2 mb-4">
             <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Grouping</label>
-            <div class="flex flex-col gap-1">
-                <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-base-200">
+            <div class="flex flex-col gap-1" id="groupingLabels">
+                <label class="grouping-label flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-muted" data-value="none">
                     <input type="radio" name="grouping" value="none" class="radio radio-sm radio-primary" checked onchange="setGrouping('none')">
                     <span>None</span>
                 </label>
-                <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-base-200">
+                <label class="grouping-label flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-muted" data-value="underlying">
                     <input type="radio" name="grouping" value="underlying" class="radio radio-sm radio-primary" onchange="setGrouping('underlying')">
                     <span>Underlying</span>
                 </label>
-                <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-base-200">
+                <label class="grouping-label flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-muted" data-value="underlying_expiry">
                     <input type="radio" name="grouping" value="underlying_expiry" class="radio radio-sm radio-primary" onchange="setGrouping('underlying_expiry')">
                     <span>Underlying &amp; Expiry</span>
                 </label>
@@ -352,6 +365,12 @@
 <script>
 const POSITIONS_STORAGE_KEY = 'algomirror_positions_prefs';
 
+// Indian digit grouping (22,33,362.89, not 2,233,362.89) - matches the
+// server-rendered `inr` Jinja filter's fmt_currency() output, so live
+// filter/group/merge recomputes stay visually identical to the initial
+// render. See holdings.html's identical helper.
+const formatINR = (value) => '₹' + value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 let positionsFilters = { product: [], direction: [], exchange: [] };
 let positionsGrouping = 'none';
 let collapsedGroups = new Set();
@@ -391,24 +410,40 @@ function setGrouping(mode) {
 }
 
 function syncPositionsFilterButtons() {
+    // filter-btn-active layers pink on top of the always-present btn-outline
+    // (utility beats DaisyUI's component-layer class regardless of source
+    // order) - matches OpenAlgo's real active-filter color exactly, unlike
+    // the theme's own btn-primary (black/white). Same fix as Holdings'
+    // identical filter buttons.
     document.querySelectorAll('#productFilterBtns button').forEach(btn => {
         const active = positionsFilters.product.includes(btn.textContent.trim());
-        btn.classList.toggle('btn-primary', active);
-        btn.classList.toggle('btn-outline', !active);
+        btn.classList.toggle('filter-btn-active', active);
     });
     document.querySelectorAll('#directionFilterBtns button').forEach(btn => {
         const value = btn.textContent.trim().toUpperCase();
         const active = positionsFilters.direction.includes(value);
-        btn.classList.toggle('btn-primary', active);
-        btn.classList.toggle('btn-outline', !active);
+        btn.classList.toggle('filter-btn-active', active);
     });
     document.querySelectorAll('#exchangeFilterBtns button').forEach(btn => {
         const active = positionsFilters.exchange.includes(btn.textContent.trim());
-        btn.classList.toggle('btn-primary', active);
-        btn.classList.toggle('btn-outline', !active);
+        btn.classList.toggle('filter-btn-active', active);
     });
     document.querySelectorAll('input[name="grouping"]').forEach(radio => {
         radio.checked = radio.value === positionsGrouping;
+    });
+    // Matches Positions.tsx's grouping <label> exactly: the whole row gets a
+    // pink tint+border when selected, and its text turns pink+semibold -
+    // not just the native radio dot, which was all this had before.
+    document.querySelectorAll('.grouping-label').forEach(label => {
+        const active = label.dataset.value === positionsGrouping;
+        label.classList.toggle('bg-pink-500/10', active);
+        label.classList.toggle('border', active);
+        label.classList.toggle('border-pink-500/30', active);
+        const span = label.querySelector('span');
+        if (span) {
+            span.classList.toggle('text-pink-500', active);
+            span.classList.toggle('font-semibold', active);
+        }
     });
 
     const hasActive = positionsFilters.product.length || positionsFilters.direction.length ||
@@ -494,9 +529,9 @@ function applyPositionsFilters() {
     // total_pnl (all positions, unfiltered) is only ever the initial value.
     const totalPnlEl = document.getElementById('statTotalPnl');
     if (totalPnlEl) {
-        totalPnlEl.textContent = `₹${visiblePnl.toFixed(2)}`;
-        totalPnlEl.classList.toggle('text-success', visiblePnl >= 0);
-        totalPnlEl.classList.toggle('text-error', visiblePnl < 0);
+        totalPnlEl.textContent = formatINR(visiblePnl);
+        totalPnlEl.classList.toggle('text-green-600', visiblePnl >= 0);
+        totalPnlEl.classList.toggle('text-red-600', visiblePnl < 0);
     }
 
     const total = rows.length;
@@ -587,9 +622,9 @@ function regroupPositions() {
         const colCount = document.querySelectorAll('thead th').length;
 
         const headerRow = document.createElement('tr');
-        headerRow.className = 'group-header-row bg-base-200 cursor-pointer hover';
+        headerRow.className = 'group-header-row bg-muted/50 cursor-pointer hover';
         headerRow.onclick = () => toggleGroupCollapse(key);
-        const pnlClass = totalPnl >= 0 ? 'text-success' : 'text-error';
+        const pnlClass = totalPnl >= 0 ? 'text-green-600' : 'text-red-600';
         headerRow.innerHTML = `
             <td colspan="${Math.max(colCount - 3, 1)}">
                 <div class="flex items-center gap-2 font-semibold">
@@ -598,7 +633,7 @@ function regroupPositions() {
                     <span class="badge badge-sm badge-outline">${visibleRows.length}</span>
                 </div>
             </td>
-            <td class="text-right font-bold ${pnlClass}">${totalPnl >= 0 ? '+' : ''}₹${totalPnl.toFixed(2)}</td>
+            <td class="text-right font-bold ${pnlClass}">${totalPnl >= 0 ? '+' : ''}${formatINR(totalPnl)}</td>
             <td class="text-right font-semibold ${pnlClass}">${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%</td>
             <td></td>
         `;
@@ -727,29 +762,34 @@ function renderMergedView() {
         const qtyCell = merged.querySelector('.qty-cell');
         if (qtyCell) {
             qtyCell.textContent = qty;
-            qtyCell.classList.toggle('text-success', qty > 0);
-            qtyCell.classList.toggle('text-error', qty < 0);
+            qtyCell.classList.toggle('text-green-600', qty > 0);
+            qtyCell.classList.toggle('text-red-600', qty < 0);
         }
         const avgCell = merged.querySelector('.avgprice-cell');
-        if (avgCell) avgCell.textContent = '₹' + avgPrice.toFixed(2);
+        if (avgCell) avgCell.textContent = formatINR(avgPrice);
         // Same symbol quotes the same live price on every account, so use
         // whichever leg actually reported one rather than assuming group[0] did.
         const ltpCell = merged.querySelector('.ltp-cell');
-        if (ltpCell) ltpCell.textContent = '₹' + representativeLtp.toFixed(2);
+        if (ltpCell) ltpCell.textContent = formatINR(representativeLtp);
         const pnlCell = merged.querySelector('.pnl-cell');
         if (pnlCell) {
-            pnlCell.textContent = '₹' + pnl.toFixed(2);
-            pnlCell.classList.toggle('text-success', pnl >= 0);
-            pnlCell.classList.toggle('text-error', pnl < 0);
+            const pnlText = pnlCell.querySelector('.pnl-text');
+            if (pnlText) pnlText.textContent = formatINR(pnl);
+            const pnlUp = pnlCell.querySelector('.pnl-icon-up');
+            const pnlDown = pnlCell.querySelector('.pnl-icon-down');
+            if (pnlUp) pnlUp.classList.toggle('hidden', pnl < 0);
+            if (pnlDown) pnlDown.classList.toggle('hidden', pnl >= 0);
+            pnlCell.classList.toggle('text-green-600', pnl >= 0);
+            pnlCell.classList.toggle('text-red-600', pnl < 0);
         }
         const pnlPercentCell = merged.querySelector('.pnlpercent-cell');
         if (pnlPercentCell) {
             pnlPercentCell.textContent = pnlPercent.toFixed(2) + '%';
-            pnlPercentCell.classList.toggle('text-success', pnlPercent >= 0);
-            pnlPercentCell.classList.toggle('text-error', pnlPercent < 0);
+            pnlPercentCell.classList.toggle('text-green-600', pnlPercent >= 0);
+            pnlPercentCell.classList.toggle('text-red-600', pnlPercent < 0);
         }
         const valueCell = merged.querySelector('.value-cell');
-        if (valueCell) valueCell.textContent = '₹' + value.toFixed(2);
+        if (valueCell) valueCell.textContent = formatINR(value);
 
         // A merged row spans more than one account, so there's no single
         // (account_id, symbol) left to close - replace the action button with
@@ -777,9 +817,13 @@ function sortPositions(col) {
     });
     rows.forEach(row => tbody.appendChild(row));
 
-    document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
-    const arrow = document.querySelector(`.sort-arrow[data-col="${col}"]`);
-    if (arrow) arrow.textContent = positionsSort.dir === 'asc' ? '▲' : '▼';
+    // Reset every header to its default static hint icon, then swap the
+    // actively-sorted column's to a directional one - see sortHoldings()
+    // for the identical pattern.
+    document.querySelectorAll('.sort-icon-default').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.sort-icon-up, .sort-icon-down').forEach(el => el.classList.add('hidden'));
+    document.querySelector(`.sort-icon-default[data-col="${col}"]`)?.classList.add('hidden');
+    document.querySelector(`.sort-icon-${positionsSort.dir === 'asc' ? 'up' : 'down'}[data-col="${col}"]`)?.classList.remove('hidden');
 
     regroupPositions();
 }

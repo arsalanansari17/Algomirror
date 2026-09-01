@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% from 'macros/account_filter.html' import account_filter %}
-{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input %}
-{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down, arrow_up_down, arrow_up, arrow_down %}
+{% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input, sortable_th %}
+{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down %}
 
 {# Matches OpenAlgo's own approach: one shared formatPercent()/formatCurrency()
    helper reused everywhere, instead of repeating the "+" if x >= 0 else ""
@@ -29,16 +29,6 @@
    utility classes in the same category have no defined winner - see the
    Positions merge-view fix for the same issue). #}
 {% set PNL_BADGE_SHAPE = 'inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit' %}
-{# Matches Holdings.tsx's SortableHeader exactly: cursor-pointer + hover:bg-muted/50
-   on the <th> itself, an inner flex div (justified to the end for right-aligned
-   columns) holding the label then a sort-hint icon. Holdings.tsx's own version
-   always shows a static ArrowUpDown at 50% opacity with no directional swap: this
-   goes one step further and swaps to a directional Arrow icon once a column is
-   actually sorted (OrderBook.tsx/TradeBook.tsx's richer SortableHeader pattern),
-   since losing that feedback entirely would be a real usability regression for a
-   cosmetic-only reason - the row order was already the only feedback, and column
-   header parity was the actual ask, not removing an affordance. #}
-{% macro sortable_th(col, label, align_right=True) %}<th class="cursor-pointer select-none hover:bg-muted/50 font-medium text-foreground{{ ' text-right' if align_right }}" onclick="sortHoldings('{{ col }}')"><div class="flex items-center gap-1{{ ' justify-end' if align_right }}">{{ label }}<span class="sort-icon-default" data-col="{{ col }}">{{ arrow_up_down('h-3 w-3 opacity-50') }}</span><span class="sort-icon-up hidden" data-col="{{ col }}">{{ arrow_up('h-3 w-3') }}</span><span class="sort-icon-down hidden" data-col="{{ col }}">{{ arrow_down('h-3 w-3') }}</span></div></th>{% endmacro %}
 <div class="space-y-6">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -170,18 +160,18 @@
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            {{ sortable_th('symbol', 'Trading Symbol', align_right=False) }}
+                            {{ sortable_th('sortHoldings', 'symbol', 'Trading Symbol', align_right=False) }}
                             <th class="font-medium text-foreground">Exchange</th>
-                            {{ sortable_th('qty', 'Quantity') }}
-                            {{ sortable_th('avgprice', 'Avg. Price') }}
-                            {{ sortable_th('ltp', 'LTP') }}
+                            {{ sortable_th('sortHoldings', 'qty', 'Quantity') }}
+                            {{ sortable_th('sortHoldings', 'avgprice', 'Avg. Price') }}
+                            {{ sortable_th('sortHoldings', 'ltp', 'LTP') }}
                             <th class="font-medium text-foreground">Product</th>
-                            {{ sortable_th('invested', 'Invested') }}
-                            {{ sortable_th('current', 'Current') }}
-                            {{ sortable_th('pnl', 'P&L') }}
-                            {{ sortable_th('pnlpercent', 'P&L %') }}
-                            {{ sortable_th('daychangepercent', 'Day Chg %') }}
-                            {{ sortable_th('allocation', 'Allocation') }}
+                            {{ sortable_th('sortHoldings', 'invested', 'Invested') }}
+                            {{ sortable_th('sortHoldings', 'current', 'Current') }}
+                            {{ sortable_th('sortHoldings', 'pnl', 'P&L') }}
+                            {{ sortable_th('sortHoldings', 'pnlpercent', 'P&L %') }}
+                            {{ sortable_th('sortHoldings', 'daychangepercent', 'Day Chg %') }}
+                            {{ sortable_th('sortHoldings', 'allocation', 'Allocation') }}
                             <th class="text-center font-medium text-foreground">Actions</th>
                         </tr>
                     </thead>
