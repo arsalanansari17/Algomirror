@@ -108,6 +108,20 @@
     @apply border border-border bg-background text-foreground hover:bg-oaaccent hover:text-oaaccent-foreground;
 }
 
+/* Same reasoning, for the filter/allocation-basis toggle buttons in
+   Holdings' Filters dialog specifically - OpenAlgo's own Button there
+   composes 'bg-pink-500 hover:bg-pink-600' onto the active state via
+   React's tailwind-merge (which can safely delete the variant's own
+   bg-primary before adding this), a capability plain class-string
+   concatenation doesn't have. Toggled ON TOP of the always-present
+   `btn btn-outline rounded-full` (DaisyUI component-layer classes,
+   which a utility-layer override always beats regardless of source
+   order - safe, unlike composing with a *macro's* utility-only variant
+   string). */
+.filter-btn-active {
+    @apply bg-pink-500 hover:bg-pink-600 text-white border-pink-500;
+}
+
 /* ============================================
    BASE STYLES
    ============================================ */

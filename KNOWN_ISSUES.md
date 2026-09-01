@@ -9,6 +9,7 @@ change, or whenever one of these actually bites.
 | 1 | 🟠 Medium | Dashboard — `/api/accounts/<id>/funds` | Open |
 | 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Open |
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
+| 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
 
 ---
 
@@ -104,3 +105,44 @@ they need explicit go-ahead before building (per user direction 2026-09-01:
 do cosmetic parity now, scope the feature builds separately). Sort and
 filters are read-only UI work and lower-risk to pick up first if/when this
 gets prioritized.
+
+### 4. Holdings — four gaps left open after the 2026-09-01 element-by-element pass, all needing infra AlgoMirror doesn't have yet
+**Where:** `app/templates/trading/holdings.html`
+
+Found during the same page-by-page comparison pass as #3, in a much more
+thorough element-by-element re-check of Holdings specifically (two earlier
+passes on this same page had already missed real things - see
+`project_algomirror_ui_redesign_plan.md` for the full account of what those
+passes fixed). These four remain open, distinct from the earlier fixes,
+because each depends on infrastructure AlgoMirror doesn't have, not just a
+missed class name:
+
+- **No Live/Paused status badge next to the page title.** OpenAlgo's
+  `Holdings.tsx` shows a pulsing "Live" or "Paused" badge reflecting its
+  WebSocket connection state (`useLivePrice` hook). AlgoMirror has no
+  WebSocket price feed on this page at all - it's a one-shot server render
+  plus a page reload for refresh, so there's no live/paused state to
+  represent honestly. Building this for real means giving Holdings a live
+  price feed, not just adding a badge.
+- **No stale-data warning banner.** Same root cause - OpenAlgo's banner
+  fires from `usePageVisibility` + a live-fetch staleness check; AlgoMirror
+  has no notion of "the tab was hidden and data might be stale" without a
+  live feed to become stale in the first place.
+- **Order dialog has no live quote header, market depth panel, or
+  price/trigger +/- step buttons.** OpenAlgo's `PlaceOrderDialog` fetches
+  live LTP/bid/ask/depth via `useLiveQuote` while the dialog is open.
+  AlgoMirror's `orderModal` is a plain form with no live data source wired
+  up - would need a new quote-fetching endpoint plus polling JS to add
+  this properly, not just markup.
+- **Filters dialog description/label text uses `text-base-content/60`
+  where the rest of the page uses `text-muted-foreground`.** Unlike the
+  three items above, this one has no architectural blocker - it's a
+  trivial token swap. Left open only because both tokens render as
+  near-identical grays in practice; genuinely low priority, listed here
+  so it doesn't get lost rather than because it's hard.
+
+**Proposed fix (not yet implemented, not yet scoped):** the first three
+need a live-quote/WebSocket layer for Holdings before any of this is
+worth building - that's a real feature project, not a quick fix, and
+should get its own scoping pass before starting. The fourth is a one-line
+fix whenever someone's already touching this file for something else.
