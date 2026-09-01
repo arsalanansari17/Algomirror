@@ -10,7 +10,7 @@ change, or whenever one of these actually bites.
 | 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Open |
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
 | 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
-| 5 | 🟡 Low (feature gap) | Holdings — Account column removed, needs a new home | Open |
+| 5 | 🟡 Low (feature gap) | Holdings/Positions — Account column removed, needs a new home | Open |
 | 6 | 🟡 Low (feature gap) | Holdings — "Exit from all accounts" deferred | Open |
 
 ---
@@ -149,24 +149,28 @@ worth building - that's a real feature project, not a quick fix, and
 should get its own scoping pass before starting. The fourth is a one-line
 fix whenever someone's already touching this file for something else.
 
-### 5. Holdings — Account column removed (2026-09-01), needs a new home
-**Where:** `app/templates/trading/holdings.html`
+### 5. Holdings/Positions — Account column removed (2026-09-01), needs a new home
+**Where:** `app/templates/trading/holdings.html`, `app/templates/trading/positions.html`
 
-OpenAlgo's own Holdings table has no Account column at all (it's a
-single-account page by design), and this column was an AlgoMirror-only
-addition to identify which account a row belongs to when viewing "All
-Accounts" or several selected accounts. Removed at the user's request to
-get closer to OpenAlgo's real table shape, but the underlying need -
-knowing which account owns a given holding when more than one is in
-view - doesn't go away, so this needs a new home rather than staying
-gone for good.
+Neither of OpenAlgo's own Holdings/Positions tables has an Account column
+at all (they're single-account pages by design), and this column was an
+AlgoMirror-only addition to identify which account a row belongs to when
+viewing "All Accounts" or several selected accounts. Removed from both
+pages at the user's request to get closer to OpenAlgo's real table shape
+(Holdings first, Positions the same day once the Value column - also
+AlgoMirror-only, also absent from OpenAlgo - was removed alongside it),
+but the underlying need - knowing which account owns a given row when
+more than one is in view - doesn't go away, so this needs a new home
+rather than staying gone for good.
 
-The account/broker data is still available for this: each `<tr>` carries
-`data-account-name` and `data-account-broker`, and `holding.account_id`/
-`holding.account_name`/`holding.broker` are still passed through in
-`holdings_data` server-side (nothing was removed from the Python side,
-only the rendered column and its dead-code cleanup in `renderMergedView()`'s
-merge-account-names logic).
+The account/broker data is still available for this on both pages: each
+`<tr>` carries `data-account-name` (Holdings also has `data-account-broker`;
+Positions carries `data-account-id`), and the account/broker fields are
+still passed through in `holdings_data`/`positions_data` server-side
+(nothing was removed from the Python side, only the rendered column and
+its dead-code cleanup in each page's `renderMergedView()` - the collected
+`accountNames` array is kept but no longer rendered anywhere, same
+reasoning on both pages).
 
 **Candidate places to resurface it (not decided, not scoped):**
 - A small colored dot/initial next to the Symbol cell (matches the

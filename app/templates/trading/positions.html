@@ -1,5 +1,4 @@
 {% extends "layout.html" %}
-{% from 'macros/account_badge.html' import account_badge, account_dot, get_account_badge_color %}
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input, sortable_th %}
 {% from 'macros/icons.html' import pnl as icon_pnl, accounts as icon_merge, trending_up, trending_down %}
@@ -165,9 +164,6 @@
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            {% if not single_account %}
-                            <th class="font-medium text-foreground">Account</th>
-                            {% endif %}
                             {{ sortable_th('sortPositions', 'symbol', 'Symbol', align_right=False) }}
                             <th class="font-medium text-foreground">Exchange</th>
                             <th class="font-medium text-foreground">Product</th>
@@ -176,7 +172,6 @@
                             <th class="text-right font-medium text-foreground">LTP</th>
                             {{ sortable_th('sortPositions', 'pnl', 'P&L') }}
                             {{ sortable_th('sortPositions', 'pnlpercent', 'P&L %') }}
-                            <th class="text-right font-medium text-foreground">Value</th>
                             <th class="text-right font-medium text-foreground">Action</th>
                         </tr>
                     </thead>
@@ -193,21 +188,13 @@
                             data-avgprice="{{ position.get('average_price', 0) or 0 }}"
                             data-pnl="{{ position.get('pnl', 0) or 0 }}"
                             data-pnlpercent="{{ position.get('pnl_percentage', 0) or 0 }}"
-                            data-value="{{ position.get('current_value', 0) or 0 }}"
                             data-ltp="{{ position.get('ltp', 0) or 0 }}"
                             data-account-id="{{ position.get('account_id', '') }}"
                             data-account-name="{{ position.get('account_name', '') }}">
-                            {% if not single_account %}
-                            <td class="account-cell">
-                                <div class="flex items-center gap-2">
-                                    {{ account_dot(position.account_id, position.account_name + ' · ' + position.broker) }}
-                                    <div data-pv="account">
-                                        <div class="text-xs font-medium">{{ position.account_name }}</div>
-                                        <div class="text-xs opacity-50">{{ position.broker }}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            {% endif %}
+                            {# Account column removed - see KNOWN_ISSUES.md for where this
+                               info should resurface (account/broker still carried on the
+                               row via data-* attributes for that future work). Matches
+                               Holdings' identical removal. #}
                             <td class="font-medium symbol-cell">
                                 {{ position.get('symbol', '') }}
                                 {% if is_closed %}<span class="{{ badge('outline') }} ml-1">Closed</span>{% endif %}
@@ -236,7 +223,6 @@
                             <td class="text-right pnlpercent-cell {{ 'text-green-600' if position.get('pnl_percentage', 0)|float >= 0 else 'text-red-600' }}" data-pv="pnl">
                                 {{ fmt_pct(position.get('pnl_percentage', 0)|float) }}
                             </td>
-                            <td class="font-mono text-right value-cell" data-pv="value">{{ fmt_currency(position.get('current_value', 0)|float) }}</td>
                             <td class="text-right action-cell">
                                 {% if not is_closed %}
                                 <button type="button"
@@ -697,7 +683,7 @@ function renderMergedView() {
 
         // Some brokers' positions API doesn't return a live LTP at all (e.g.
         // Kotak - the field is just missing/0), so a leg from that account
-        // would otherwise contribute ₹0 to the merged Value even though the
+        // would otherwise show ₹0 as the merged row's LTP even though the
         // position is real. Since every leg in the group is the same
         // instrument, backfill a zero/missing LTP from whichever other leg
         // in the group actually has one, rather than trusting each leg's own
@@ -706,16 +692,14 @@ function renderMergedView() {
             .map(row => parseFloat(row.dataset.ltp) || 0)
             .find(v => v > 0) || 0;
 
-        let qty = 0, weightedAvgNum = 0, pnl = 0, value = 0, investment = 0;
+        let qty = 0, weightedAvgNum = 0, pnl = 0, investment = 0;
         const accountNames = [];
         group.forEach(row => {
             const q = parseFloat(row.dataset.qty) || 0;
             const avg = parseFloat(row.dataset.avgprice) || 0;
-            const ltp = parseFloat(row.dataset.ltp) || 0;
             qty += q;
             weightedAvgNum += q * avg;
             pnl += parseFloat(row.dataset.pnl) || 0;
-            value += Math.abs(q) * (ltp > 0 ? ltp : representativeLtp);
             investment += Math.abs(q) * Math.abs(avg);
             if (row.dataset.accountName) accountNames.push(row.dataset.accountName);
             row.classList.add('hidden', 'merge-hidden');
@@ -734,14 +718,14 @@ function renderMergedView() {
         merged.dataset.avgprice = avgPrice;
         merged.dataset.pnl = pnl;
         merged.dataset.pnlpercent = pnlPercent;
-        merged.dataset.value = value;
         merged.dataset.ltp = representativeLtp;
         merged.dataset.direction = direction;
         merged.dataset.filteredVisible = '1';
         delete merged.dataset.accountId;
 
-        const acctCell = merged.querySelector('.account-cell');
-        if (acctCell) acctCell.innerHTML = `<div class="text-xs font-medium" data-pv="account">${accountNames.join(', ')}</div>`;
+        // accountNames is still collected above (kept for the future work
+        // noted in KNOWN_ISSUES.md on where to resurface it) but no longer
+        // rendered into a dedicated column - there isn't one anymore.
 
         // A merged row's net quantity can differ from any single leg (e.g. one
         // account long, another short) - rebuild the "Closed" badge from the
@@ -788,9 +772,6 @@ function renderMergedView() {
             pnlPercentCell.classList.toggle('text-green-600', pnlPercent >= 0);
             pnlPercentCell.classList.toggle('text-red-600', pnlPercent < 0);
         }
-        const valueCell = merged.querySelector('.value-cell');
-        if (valueCell) valueCell.textContent = formatINR(value);
-
         // A merged row spans more than one account, so there's no single
         // (account_id, symbol) left to close - replace the action button with
         // a placeholder, same reasoning as the tag-trigger replacement in the
