@@ -495,7 +495,6 @@ function applyPositionsFilters() {
     if (searchClear) searchClear.classList.toggle('hidden', query === '');
 
     const rows = Array.from(document.querySelectorAll('#positionsTbody tr:not(.group-header-row)'));
-    let visible = 0;
     let visiblePnl = 0;
     rows.forEach(row => {
         let show = true;
@@ -505,7 +504,6 @@ function applyPositionsFilters() {
         if (positionsFilters.exchange.length && !positionsFilters.exchange.includes(row.dataset.exchange)) show = false;
         row.dataset.filteredVisible = show ? '1' : '0';
         if (show) {
-            visible++;
             visiblePnl += parseFloat(row.dataset.pnl) || 0;
         }
     });
@@ -520,17 +518,30 @@ function applyPositionsFilters() {
         totalPnlEl.classList.toggle('text-red-600', visiblePnl < 0);
     }
 
-    const total = rows.length;
     const hasActive = query !== '' || positionsFilters.product.length || positionsFilters.direction.length ||
         positionsFilters.exchange.length || positionsGrouping !== 'none';
-
-    document.getElementById('positionsCount').textContent = hasActive
-        ? `${visible} of ${total} position${total === 1 ? '' : 's'}`
-        : `${total} position${total === 1 ? '' : 's'}`;
 
     updateActiveFiltersBar(query, hasActive);
     if (mergeViewOn) renderMergedView();
     regroupPositions();
+
+    // Count is read from the table AFTER merge (and grouping) run, not from
+    // the pre-merge `rows`/`visible` above - toggling Merge Accounts used to
+    // leave the "N positions" number showing the raw per-account leg count
+    // even though the table itself had just collapsed same-symbol rows
+    // together. `:not(.merge-hidden)` excludes the original per-account legs
+    // renderMergedView() folded away (they're still in the DOM, just hidden -
+    // without this, `total` double-counted both a merged row and the legs it
+    // replaced). `filteredVisible` (not the `hidden` class) is what "matches
+    // the current filters" means for the numerator - a row folded under a
+    // *collapsed* group still matches the filter, it's just visually nested
+    // away, so collapsing a group must not change this number either.
+    const finalRows = Array.from(document.querySelectorAll('#positionsTbody tr:not(.group-header-row):not(.merge-hidden)'));
+    const visible = finalRows.filter(row => row.dataset.filteredVisible === '1').length;
+    const total = finalRows.length;
+    document.getElementById('positionsCount').textContent = hasActive
+        ? `${visible} of ${total} position${total === 1 ? '' : 's'}`
+        : `${total} position${total === 1 ? '' : 's'}`;
     document.getElementById('positionsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
     document.getElementById('positionsFiltersDot').classList.toggle('hidden',
         !(positionsFilters.product.length || positionsFilters.direction.length || positionsFilters.exchange.length || positionsGrouping !== 'none'));

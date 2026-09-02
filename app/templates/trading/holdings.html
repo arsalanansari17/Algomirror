@@ -797,7 +797,6 @@ function applyHoldingsFilters() {
     document.getElementById('filterChipSearch').textContent = 'Search: ' + query;
 
     const rows = document.querySelectorAll('#holdingsTbody tr');
-    let visible = 0;
     rows.forEach(row => {
         let show = true;
         if (query && !row.dataset.symbol.includes(query)) show = false;
@@ -808,22 +807,32 @@ function applyHoldingsFilters() {
         }
         if (holdingsFilters.strategy.length && !holdingsFilters.strategy.includes(row.dataset.strategy)) show = false;
         row.classList.toggle('hidden', !show);
-        if (show) visible++;
     });
 
-    const total = rows.length;
-    const countEl = document.getElementById('holdingsCount');
     const hasActive = holdingsFilters.hasT1 || holdingsFilters.hasPledged || holdingsFilters.strategy.length > 0 || query !== '';
-    countEl.textContent = hasActive
-        ? `${visible} of ${total} stock${total === 1 ? '' : 's'}`
-        : `${total} stock${total === 1 ? '' : 's'}`;
-
     document.getElementById('holdingsActiveFilters').classList.toggle('hidden', !hasActive);
     document.getElementById('holdingsActiveFilters').classList.toggle('flex', hasActive);
-    document.getElementById('holdingsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
     document.getElementById('holdingsFiltersDot').classList.toggle('hidden', !(holdingsFilters.hasT1 || holdingsFilters.hasPledged || holdingsFilters.strategy.length > 0));
 
     if (mergeViewOn) renderMergedView();
+
+    // Count is read from the table AFTER merge runs, not from the pre-merge
+    // `rows` above - toggling Merge Accounts used to leave the "N stocks"
+    // number showing the raw per-account row count even though the table
+    // itself had just collapsed same-symbol rows together. A row hidden for
+    // merging carries `merge-hidden` (added fresh by renderMergedView() on
+    // this same call, since clearMergedView() strips it at the top) - excl-
+    // uding just that class (not plain `hidden`, which also covers filtered-
+    // out rows) gives the correct post-merge denominator; `:not(.hidden)`
+    // gives the correct post-merge, post-filter numerator.
+    const countEl = document.getElementById('holdingsCount');
+    const visible = document.querySelectorAll('#holdingsTbody tr:not(.hidden)').length;
+    const total = document.querySelectorAll('#holdingsTbody tr:not(.merge-hidden)').length;
+    countEl.textContent = hasActive
+        ? `${visible} of ${total} stock${total === 1 ? '' : 's'}`
+        : `${total} stock${total === 1 ? '' : 's'}`;
+    document.getElementById('holdingsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
+
     recomputeSummaryStats();
     recomputeAllocationColumn();
 }
