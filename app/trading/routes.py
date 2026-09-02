@@ -269,10 +269,19 @@ def positions():
         price. Batch-fetch a real quote for just the affected symbols -
         same multiquotes pattern the Holdings page already uses for Day's
         P&L below. Best-effort: a quote failure just leaves ltp at
-        whatever the broker originally reported (usually 0)."""
+        whatever the broker originally reported (usually 0).
+
+        Includes closed (quantity == 0) legs too, not just open ones - a
+        squared-off position's current LTP isn't needed for its own P&L
+        (already realized), but is still worth showing for reference, same
+        as OpenAlgo's real Positions page would for a broker that reports
+        LTP natively (Zerodha). Originally gated to qty != 0 only, since
+        that's all this function's own P&L-derivation caller needed at the
+        time - loosened once the gap was flagged as a real display gap in
+        its own right."""
         missing = [
             p for p in positions_list
-            if float(p.get('quantity', 0) or 0) != 0 and not float(p.get('ltp', 0) or 0)
+            if not float(p.get('ltp', 0) or 0)
         ]
         if not missing:
             return
