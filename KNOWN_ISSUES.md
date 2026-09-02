@@ -10,7 +10,7 @@ change, or whenever one of these actually bites.
 | 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Open |
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
 | 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
-| 5 | 🟡 Low (feature gap) | Holdings/Positions — Account column removed, needs a new home | Open |
+| 5 | 🟡 Low (feature gap) | Positions — Account column removed, needs a new home (Holdings resolved) | Open |
 | 6 | 🟡 Low (feature gap) | Holdings — "Exit from all accounts" deferred | Open |
 
 ---
@@ -149,8 +149,15 @@ worth building - that's a real feature project, not a quick fix, and
 should get its own scoping pass before starting. The fourth is a one-line
 fix whenever someone's already touching this file for something else.
 
-### 5. Holdings/Positions — Account column removed (2026-09-01), needs a new home
-**Where:** `app/templates/trading/holdings.html`, `app/templates/trading/positions.html`
+### 5. Positions — Account column removed (2026-09-01), needs a new home
+**Where:** `app/templates/trading/positions.html`
+
+**Holdings resolved 2026-09-02** - see the "Holding Detail Dialog" note in
+`holdings.html` (the `info-btn` in the Actions cell, next to Add/Exit,
+opens `holdingDetailModal` showing Account/Broker plus a fuller breakdown
+of the row, like Zerodha's own app). Not offered on merged rows, same
+reasoning as the tag section below. Positions doesn't have an equivalent
+popup yet, so its Account column is still gone with nothing replacing it.
 
 Neither of OpenAlgo's own Holdings/Positions tables has an Account column
 at all (they're single-account pages by design), and this column was an
@@ -158,33 +165,19 @@ AlgoMirror-only addition to identify which account a row belongs to when
 viewing "All Accounts" or several selected accounts. Removed from both
 pages at the user's request to get closer to OpenAlgo's real table shape
 (Holdings first, Positions the same day once the Value column - also
-AlgoMirror-only, also absent from OpenAlgo - was removed alongside it),
-but the underlying need - knowing which account owns a given row when
-more than one is in view - doesn't go away, so this needs a new home
-rather than staying gone for good.
+AlgoMirror-only, also absent from OpenAlgo - was removed alongside it).
 
-The account/broker data is still available for this on both pages: each
-`<tr>` carries `data-account-name` (Holdings also has `data-account-broker`;
-Positions carries `data-account-id`), and the account/broker fields are
-still passed through in `holdings_data`/`positions_data` server-side
-(nothing was removed from the Python side, only the rendered column and
-its dead-code cleanup in each page's `renderMergedView()` - the collected
-`accountNames` array is kept but no longer rendered anywhere, same
-reasoning on both pages).
+The account/broker data is still available on Positions for this: each
+`<tr>` carries `data-account-name`/`data-account-id`, and the account/broker
+fields are still passed through in `positions_data` server-side (nothing
+was removed from the Python side, only the rendered column and its
+dead-code cleanup in `renderMergedView()` - the collected `accountNames`
+array is kept but no longer rendered anywhere).
 
-**Candidate places to resurface it (not decided, not scoped):**
-- A small colored dot/initial next to the Symbol cell (matches the
-  existing `account_dot()` macro used elsewhere, e.g. Orderbook/Tradebook's
-  Account column, before this removal) - lowest-effort, likely closest to
-  what was here before.
-- A tooltip/title attribute on the Symbol cell showing account + broker on
-  hover - zero extra visual footprint, but discoverability is worse.
-- Grouping the table by account when more than one is selected, instead of
-  a per-row indicator at all - a bigger restructure, probably overkill for
-  this.
-
-**Proposed fix:** none chosen yet - revisit when this is actually missed
-in practice, or the next time multi-account Holdings work is scoped.
+**Proposed fix:** port the same Holding-Detail-Dialog pattern onto
+Positions (a `positionDetailModal` + `info-btn`) when that page gets its
+own tagging/detail pass - reuses the exact same approach, no new design
+needed.
 
 ### 6. Holdings — "Exit from all accounts" deferred (2026-09-01)
 **Where:** `app/templates/trading/holdings.html`, `app/trading/routes.py`

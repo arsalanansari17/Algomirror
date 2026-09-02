@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, button_toggle_base, badge, card, card_header, card_title, card_description, card_content, input as ui_input, sortable_th %}
-{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down %}
+{% from 'macros/icons.html' import accounts as icon_merge, trending_up, trending_down, info as icon_info, tag as icon_tag %}
 
 {# Matches OpenAlgo's own approach: one shared formatPercent()/formatCurrency()
    helper reused everywhere, instead of repeating the "+" if x >= 0 else ""
@@ -181,6 +181,9 @@
                         {% set pledged = holding.pledged_quantity|float if holding.pledged_quantity else 0 %}
                         <tr class="hover"
                             data-symbol="{{ holding.symbol|lower }}"
+                            data-symbol-display="{{ holding.symbol }}"
+                            data-exchange="{{ holding.exchange }}"
+                            data-product="{{ holding.product }}"
                             data-has-t1="{{ '1' if t1 > 0 else '0' }}"
                             data-has-pledged="{{ '1' if pledged > 0 else '0' }}"
                             data-t1qty="{{ t1 }}"
@@ -201,15 +204,11 @@
                             data-account-id="{{ holding.account_id }}"
                             data-account-name="{{ holding.account_name }}"
                             data-account-broker="{{ holding.broker }}">
-                            {# Account column removed - see KNOWN_ISSUES.md for where this
-                               info should resurface (account/broker still carried on the
-                               row via data-* attributes for that future work). #}
-                            {# Tag trigger removed from this cell - matches OpenAlgo's plain
-                               Symbol cell exactly. Tagging itself isn't gone (Positions still
-                               has its own trigger against the same shared PositionTag model,
-                               keyed on account_id+symbol - a tag set there still shows up and
-                               is filterable here), only the create-a-tag UI on Holdings
-                               specifically. #}
+                            {# Account column removed to match OpenAlgo's plain Symbol cell -
+                               account/broker now shown in the "More info" popup (info-btn in
+                               the Actions cell) instead, for unmerged rows. Tag-trigger badge
+                               removed from this cell for the same reason - strategy tagging
+                               now lives in that same popup (see holdingDetailModal below). #}
                             <td class="font-medium symbol-cell">{{ holding.symbol }}</td>
                             <td class="exchange-cell"><span class="{{ badge('outline') }}">{{ holding.exchange }}</span></td>
                             {# Matches OpenAlgo's QuantityCell exactly: badges + the free-qty
@@ -255,6 +254,10 @@
                                existing position; Exit's is scoped to just these holders. #}
                             <td class="actions-cell text-center">
                                 <div class="flex items-center justify-center gap-2">
+                                    <button type="button"
+                                            class="info-btn btn btn-ghost btn-xs h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
+                                            title="More info"
+                                            onclick="openHoldingDetail(this.closest('tr'))">{{ icon_info('h-4 w-4') }}</button>
                                     <button type="button"
                                             class="btn btn-outline btn-xs h-7 px-3 border-green-600/40 text-green-600 hover:bg-green-600/10"
                                             data-holders='[{"id": {{ holding.account_id }}, "name": {{ holding.account_name|tojson }}, "quantity": {{ holding.quantity or 0 }}}]'
@@ -486,6 +489,65 @@
         <div class="modal-action">
             <button type="button" class="btn btn-ghost btn-sm" onclick="orderModal.close()">Cancel</button>
             <button type="button" id="orderModalSubmitBtn" class="btn btn-sm" onclick="submitOrderModal()">Place Order</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<!-- Holding Detail Dialog - the new home for the Account column (removed
+     from the table to match OpenAlgo's plain layout) and for strategy
+     tagging (its old Symbol-cell trigger was removed for the same reason -
+     see the note on symbol-cell above). Populated entirely from the row's
+     own data-* attributes, no server round-trip to open it. Not offered on
+     merged rows (info-btn is stripped in renderMergedView) since a tag is
+     keyed per (account_id, symbol) and can't cleanly apply to a group
+     spanning multiple accounts. -->
+<dialog id="holdingDetailModal" class="modal">
+    <div class="modal-box max-w-sm">
+        <h3 class="font-semibold text-lg leading-none mb-1">
+            <span id="detailSymbol"></span>
+        </h3>
+        <div class="flex items-center gap-2 mb-4">
+            <span id="detailExchangeBadge" class="{{ badge('outline') }}"></span>
+            <span id="detailProductBadge" class="{{ badge('secondary') }}"></span>
+        </div>
+
+        <div class="space-y-1 text-sm mb-4">
+            <div class="flex justify-between"><span class="text-muted-foreground">Account</span><span id="detailAccount" class="font-medium"></span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Broker</span><span id="detailBroker" class="font-medium"></span></div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-4">
+            <div><span class="text-muted-foreground block text-xs">Free Qty</span><span id="detailFreeQty" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">T1 / Pledged</span><span id="detailT1Pledged" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">Avg. Price</span><span id="detailAvgPrice" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">LTP</span><span id="detailLtp" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">Invested</span><span id="detailInvested" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">Current</span><span id="detailCurrent" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">P&amp;L</span><span id="detailPnl" class="font-mono font-medium"></span></div>
+            <div><span class="text-muted-foreground block text-xs">P&amp;L %</span><span id="detailPnlPct" class="font-mono font-medium"></span></div>
+            <div><span class="text-muted-foreground block text-xs">Day Chg %</span><span id="detailDayChg" class="font-mono"></span></div>
+            <div><span class="text-muted-foreground block text-xs">Allocation</span><span id="detailAllocation" class="font-mono"></span></div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <div class="space-y-2">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60 flex items-center gap-1">{{ icon_tag('h-3.5 w-3.5') }} Strategy Tag</label>
+            <div class="flex gap-2">
+                <input type="text" id="detailTagInput" class="input input-bordered input-sm w-full" placeholder="e.g. DonchianSwing">
+                <button type="button" class="btn btn-sm" onclick="saveHoldingTag()">Save</button>
+            </div>
+            <button type="button" id="detailTagRemoveBtn" class="hidden btn btn-ghost btn-xs text-destructive px-0" onclick="removeHoldingTag()">Remove tag</button>
+            <p id="detailTagError" class="text-xs text-error hidden"></p>
+        </div>
+
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="holdingDetailModal.close()">Close</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">
@@ -836,11 +898,113 @@ function exportToCSV(type) {
     document.body.removeChild(link);
 }
 
-// Tag creation/editing UI removed from Holdings (see the note on
-// symbol-cell above) - openTagModal()/saveTagFromModal()/
-// removeTagFromModal()/sendTagRequest() and the tagModal dialog they
-// drove went with it. Positions still has its own copy of this feature
-// against the same shared PositionTag model.
+// Detail/tag popup - reads everything from the row's own data-* attributes
+// (no server round-trip to open it), and posts to the same PositionTag
+// routes the old Symbol-cell trigger used. Not offered on merged rows -
+// see renderMergedView's info-btn removal.
+let detailModalContext = { accountId: null, symbol: null };
+
+function openHoldingDetail(row) {
+    const symbol = row.dataset.symbolDisplay || row.dataset.symbol;
+    document.getElementById('detailSymbol').textContent = symbol;
+    document.getElementById('detailExchangeBadge').textContent = row.dataset.exchange || '-';
+    document.getElementById('detailProductBadge').textContent = row.dataset.product || '-';
+    document.getElementById('detailAccount').textContent = row.dataset.accountName || '-';
+    document.getElementById('detailBroker').textContent = row.dataset.accountBroker || '-';
+
+    const t1 = parseFloat(row.dataset.t1qty) || 0;
+    const pledged = parseFloat(row.dataset.pledgedqty) || 0;
+    document.getElementById('detailFreeQty').textContent = row.dataset.freeqty || '0';
+    document.getElementById('detailT1Pledged').textContent = (t1 > 0 || pledged > 0) ? `${t1} / ${pledged}` : '-';
+    document.getElementById('detailAvgPrice').textContent = formatINR(parseFloat(row.dataset.avgprice) || 0);
+    document.getElementById('detailLtp').textContent = formatINR(parseFloat(row.dataset.ltp) || 0);
+    document.getElementById('detailInvested').textContent = formatINR(parseFloat(row.dataset.invested) || 0);
+    document.getElementById('detailCurrent').textContent = formatINR(parseFloat(row.dataset.current) || 0);
+
+    const pnl = parseFloat(row.dataset.pnl) || 0;
+    const pnlEl = document.getElementById('detailPnl');
+    pnlEl.textContent = (pnl >= 0 ? '+' : '') + formatINR(pnl);
+    pnlEl.classList.toggle('text-green-600', pnl >= 0);
+    pnlEl.classList.toggle('text-red-600', pnl < 0);
+
+    const pnlPct = parseFloat(row.dataset.pnlpercent) || 0;
+    const pnlPctEl = document.getElementById('detailPnlPct');
+    pnlPctEl.textContent = (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
+    pnlPctEl.classList.toggle('text-green-600', pnlPct >= 0);
+    pnlPctEl.classList.toggle('text-red-600', pnlPct < 0);
+
+    const hasDayData = row.dataset.daypnl !== undefined && row.dataset.daypnl !== '';
+    const dayChgEl = document.getElementById('detailDayChg');
+    if (hasDayData) {
+        const dayChg = parseFloat(row.dataset.daychangepercent) || 0;
+        dayChgEl.textContent = (dayChg >= 0 ? '+' : '') + dayChg.toFixed(2) + '%';
+        dayChgEl.classList.toggle('text-green-600', dayChg >= 0);
+        dayChgEl.classList.toggle('text-red-600', dayChg < 0);
+    } else {
+        dayChgEl.textContent = '-';
+        dayChgEl.classList.remove('text-green-600', 'text-red-600');
+    }
+    document.getElementById('detailAllocation').textContent = (parseFloat(row.dataset.allocation) || 0).toFixed(2) + '%';
+
+    detailModalContext = { accountId: row.dataset.accountId, symbol: symbol };
+    document.getElementById('detailTagInput').value = row.dataset.strategy || '';
+    document.getElementById('detailTagRemoveBtn').classList.toggle('hidden', !row.dataset.strategy);
+    document.getElementById('detailTagError').classList.add('hidden');
+
+    holdingDetailModal.showModal();
+}
+
+async function saveHoldingTag() {
+    const strategy = document.getElementById('detailTagInput').value.trim();
+    const errorEl = document.getElementById('detailTagError');
+    errorEl.classList.add('hidden');
+    if (!strategy) {
+        errorEl.textContent = 'Enter a strategy name';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const resp = await fetchWithCSRF("{{ url_for('trading.tag_holding') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: detailModalContext.accountId, symbol: detailModalContext.symbol, strategy })
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            errorEl.textContent = data.message || 'Failed to save tag';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        holdingDetailModal.close();
+        location.reload();
+    } catch (e) {
+        errorEl.textContent = 'Failed to save tag';
+        errorEl.classList.remove('hidden');
+    }
+}
+
+async function removeHoldingTag() {
+    const errorEl = document.getElementById('detailTagError');
+    errorEl.classList.add('hidden');
+    try {
+        const resp = await fetchWithCSRF("{{ url_for('trading.untag_holding') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: detailModalContext.accountId, symbol: detailModalContext.symbol })
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            errorEl.textContent = data.message || 'Failed to remove tag';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        holdingDetailModal.close();
+        location.reload();
+    } catch (e) {
+        errorEl.textContent = 'Failed to remove tag';
+        errorEl.classList.remove('hidden');
+    }
+}
 
 // Which (account, quantity) pairs the currently-open order can route
 // through - a single entry for an unmerged row, the whole merge group for
@@ -1095,14 +1259,13 @@ function renderMergedView() {
             merged.dataset.daychangepercent = 0;
         }
 
-        // accountNames is still collected above (kept for the future work
-        // noted in KNOWN_ISSUES.md on where to resurface it) but no longer
-        // rendered into a dedicated column - there isn't one anymore.
-
-        // strategies is still collected above (same reasoning as
-        // accountNames) but no longer rendered anywhere - there's no more
-        // tag-trigger element in the row to replace, since the Symbol cell
-        // no longer has one.
+        // accountNames/strategies are collected above but a merged row spans
+        // more than one account, and both the detail popup and its tag
+        // section are keyed to a single (account_id, symbol) - there's no
+        // single answer to show, so the info-btn is removed entirely rather
+        // than wired to just one of the group's accounts.
+        const infoBtn = merged.querySelector('.info-btn');
+        if (infoBtn) infoBtn.remove();
 
         // Add/Exit now works on a merged row too, via the order modal's
         // Account dropdown - overwrite the cloned buttons' data-holders
