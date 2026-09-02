@@ -514,7 +514,9 @@
             <span id="detailProductBadge" class="{{ badge('secondary') }}"></span>
         </div>
 
-        <div class="space-y-1 text-sm mb-4">
+        <!-- Unmerged rows only - a merged row has no single account/broker,
+             see detailMergedAccount below. -->
+        <div id="detailSingleAccount" class="space-y-1 text-sm mb-4">
             <div class="flex justify-between"><span class="text-muted-foreground">Account</span><span id="detailAccount" class="font-medium"></span></div>
             <div class="flex justify-between"><span class="text-muted-foreground">Broker</span><span id="detailBroker" class="font-medium"></span></div>
         </div>
@@ -536,15 +538,26 @@
 
         <div class="divider my-1"></div>
 
-        <div class="space-y-2">
+        <!-- Unmerged: one account, one tag - the simple case. -->
+        <div id="detailSingleTag" class="space-y-2">
             <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60 flex items-center gap-1">{{ icon_tag('h-3.5 w-3.5') }} Strategy Tag</label>
             <div class="flex gap-2">
                 <input type="text" id="detailTagInput" class="input input-bordered input-sm w-full" placeholder="e.g. DonchianSwing">
                 <button type="button" class="btn btn-sm" onclick="saveHoldingTag()">Save</button>
             </div>
             <button type="button" id="detailTagRemoveBtn" class="hidden btn btn-ghost btn-xs text-destructive px-0" onclick="removeHoldingTag()">Remove tag</button>
-            <p id="detailTagError" class="text-xs text-error hidden"></p>
         </div>
+
+        <!-- Merged: a tag is keyed per (account_id, symbol), so a merged row
+             (same symbol, several accounts) can't have one tag - break it
+             down into one tag row per account instead, populated by
+             openHoldingDetail() from the row's data-legs JSON. -->
+        <div id="detailMergedTags" class="hidden space-y-2">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60 flex items-center gap-1">{{ icon_tag('h-3.5 w-3.5') }} Strategy Tag per Account</label>
+            <div id="detailLegsList" class="space-y-3"></div>
+        </div>
+
+        <p id="detailTagError" class="text-xs text-error hidden mt-2"></p>
 
         <div class="modal-action">
             <button type="button" class="btn btn-ghost btn-sm" onclick="holdingDetailModal.close()">Close</button>
@@ -900,8 +913,10 @@ function exportToCSV(type) {
 
 // Detail/tag popup - reads everything from the row's own data-* attributes
 // (no server round-trip to open it), and posts to the same PositionTag
-// routes the old Symbol-cell trigger used. Not offered on merged rows -
-// see renderMergedView's info-btn removal.
+// routes the old Symbol-cell trigger used. A merged row (data-legs present,
+// set by renderMergedView()) shows a per-account tag breakdown instead of
+// the single Account/Broker/tag section, since a tag is keyed per
+// (account_id, symbol) and a merged row spans several accounts.
 let detailModalContext = { accountId: null, symbol: null };
 
 function openHoldingDetail(row) {
@@ -909,8 +924,17 @@ function openHoldingDetail(row) {
     document.getElementById('detailSymbol').textContent = symbol;
     document.getElementById('detailExchangeBadge').textContent = row.dataset.exchange || '-';
     document.getElementById('detailProductBadge').textContent = row.dataset.product || '-';
-    document.getElementById('detailAccount').textContent = row.dataset.accountName || '-';
-    document.getElementById('detailBroker').textContent = row.dataset.accountBroker || '-';
+
+    const legs = row.dataset.legs ? JSON.parse(row.dataset.legs) : null;
+    document.getElementById('detailSingleAccount').classList.toggle('hidden', !!legs);
+    document.getElementById('detailSingleTag').classList.toggle('hidden', !!legs);
+    document.getElementById('detailMergedTags').classList.toggle('hidden', !legs);
+    if (legs) {
+        renderTagBreakdown(legs);
+    } else {
+        document.getElementById('detailAccount').textContent = row.dataset.accountName || '-';
+        document.getElementById('detailBroker').textContent = row.dataset.accountBroker || '-';
+    }
 
     const t1 = parseFloat(row.dataset.t1qty) || 0;
     const pledged = parseFloat(row.dataset.pledgedqty) || 0;
@@ -947,11 +971,87 @@ function openHoldingDetail(row) {
     document.getElementById('detailAllocation').textContent = (parseFloat(row.dataset.allocation) || 0).toFixed(2) + '%';
 
     detailModalContext = { accountId: row.dataset.accountId, symbol: symbol };
-    document.getElementById('detailTagInput').value = row.dataset.strategy || '';
-    document.getElementById('detailTagRemoveBtn').classList.toggle('hidden', !row.dataset.strategy);
+    if (!legs) {
+        document.getElementById('detailTagInput').value = row.dataset.strategy || '';
+        document.getElementById('detailTagRemoveBtn').classList.toggle('hidden', !row.dataset.strategy);
+    }
     document.getElementById('detailTagError').classList.add('hidden');
 
     holdingDetailModal.showModal();
+}
+
+// One tag row per account holding this symbol - each saves/removes
+// independently via its own account_id, since PositionTag is keyed per
+// (account_id, symbol) and a merged row's accounts may legitimately carry
+// different tags (or no tag at all).
+function renderTagBreakdown(legs) {
+    const container = document.getElementById('detailLegsList');
+    container.innerHTML = legs.map(leg => `
+        <div class="border border-border rounded-md p-2.5 space-y-1.5" data-leg-account="${leg.accountId}">
+            <div class="flex items-baseline justify-between text-sm">
+                <span class="font-medium">${leg.accountName}</span>
+                <span class="text-muted-foreground text-xs">${leg.broker} &middot; qty ${leg.quantity}</span>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" class="leg-tag-input input input-bordered input-sm w-full" value="${leg.strategy || ''}" placeholder="e.g. DonchianSwing">
+                <button type="button" class="btn btn-sm" onclick="saveLegTag(${leg.accountId}, this)">Save</button>
+            </div>
+            <button type="button" class="leg-tag-remove btn btn-ghost btn-xs text-destructive px-0${leg.strategy ? '' : ' hidden'}" onclick="removeLegTag(${leg.accountId}, this)">Remove tag</button>
+        </div>
+    `).join('');
+}
+
+async function saveLegTag(accountId, btn) {
+    const legEl = btn.closest('[data-leg-account]');
+    const strategy = legEl.querySelector('.leg-tag-input').value.trim();
+    const errorEl = document.getElementById('detailTagError');
+    errorEl.classList.add('hidden');
+    if (!strategy) {
+        errorEl.textContent = 'Enter a strategy name';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const resp = await fetchWithCSRF("{{ url_for('trading.tag_holding') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId, symbol: detailModalContext.symbol, strategy })
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            errorEl.textContent = data.message || 'Failed to save tag';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        holdingDetailModal.close();
+        location.reload();
+    } catch (e) {
+        errorEl.textContent = 'Failed to save tag';
+        errorEl.classList.remove('hidden');
+    }
+}
+
+async function removeLegTag(accountId, btn) {
+    const errorEl = document.getElementById('detailTagError');
+    errorEl.classList.add('hidden');
+    try {
+        const resp = await fetchWithCSRF("{{ url_for('trading.untag_holding') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId, symbol: detailModalContext.symbol })
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            errorEl.textContent = data.message || 'Failed to remove tag';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        holdingDetailModal.close();
+        location.reload();
+    } catch (e) {
+        errorEl.textContent = 'Failed to remove tag';
+        errorEl.classList.remove('hidden');
+    }
 }
 
 async function saveHoldingTag() {
@@ -1206,6 +1306,12 @@ function renderMergedView() {
         // them, so selling "all 67" through one account that only holds 30
         // isn't possible to accidentally submit.
         const holders = [];
+        // One entry per account for the detail popup's per-account tag
+        // breakdown (see renderTagBreakdown()) - each account's own current
+        // tag travels with it, since PositionTag is keyed per (account_id,
+        // symbol) and different accounts holding the same symbol may
+        // legitimately carry different tags.
+        const legs = [];
         group.forEach(row => {
             const q = parseFloat(row.dataset.qty) || 0;
             qty += q;
@@ -1234,6 +1340,13 @@ function renderMergedView() {
                     name: row.dataset.accountName || '',
                     quantity: parseFloat(row.dataset.freeqty) || 0,
                 });
+                legs.push({
+                    accountId: parseInt(row.dataset.accountId, 10),
+                    accountName: row.dataset.accountName || '',
+                    broker: row.dataset.accountBroker || '',
+                    quantity: parseFloat(row.dataset.freeqty) || 0,
+                    strategy: row.dataset.strategy || '',
+                });
             }
             row.classList.add('hidden', 'merge-hidden');
         });
@@ -1259,13 +1372,12 @@ function renderMergedView() {
             merged.dataset.daychangepercent = 0;
         }
 
-        // accountNames/strategies are collected above but a merged row spans
-        // more than one account, and both the detail popup and its tag
-        // section are keyed to a single (account_id, symbol) - there's no
-        // single answer to show, so the info-btn is removed entirely rather
-        // than wired to just one of the group's accounts.
-        const infoBtn = merged.querySelector('.info-btn');
-        if (infoBtn) infoBtn.remove();
+        // accountNames is collected above but not rendered anywhere - there's
+        // no more Account column. strategies (the Set) is likewise collected
+        // but superseded by the richer per-account `legs` breakdown below,
+        // which openHoldingDetail() reads via data-legs to show one tag row
+        // per account (rather than reducing to a single value).
+        merged.dataset.legs = JSON.stringify(legs);
 
         // Add/Exit now works on a merged row too, via the order modal's
         // Account dropdown - overwrite the cloned buttons' data-holders
