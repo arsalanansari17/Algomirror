@@ -604,11 +604,12 @@ function loadHoldingsPrefs() {
         if (saved.allocationBasis === 'current' || saved.allocationBasis === 'invested') {
             allocationBasis = saved.allocationBasis;
         }
+        mergeViewOn = !!saved.mergeViewOn;
     } catch (e) { /* ignore malformed prefs */ }
 }
 
 function saveHoldingsPrefs() {
-    localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify({ filters: holdingsFilters, allocationBasis }));
+    localStorage.setItem(HOLDINGS_STORAGE_KEY, JSON.stringify({ filters: holdingsFilters, allocationBasis, mergeViewOn }));
 }
 
 function toggleHoldingsFilter(key) {
@@ -843,6 +844,11 @@ function sortHoldings(col, silent) {
         holdingsSort.col = col;
     }
     const tbody = document.getElementById('holdingsTbody');
+    // recomputeAllocationColumn() calls this (col='allocation', silent) from
+    // applyHoldingsFilters()'s unconditional path - #holdingsTbody doesn't
+    // exist at all when there are zero holdings (the table is server-side
+    // conditional on holdings_data), which otherwise threw here.
+    if (!tbody) return;
     const rows = Array.from(tbody.querySelectorAll('tr'));
     const dir = holdingsSort.dir === 'asc' ? 1 : -1;
 
@@ -868,6 +874,7 @@ function sortHoldings(col, silent) {
 document.addEventListener('DOMContentLoaded', () => {
     loadHoldingsPrefs();
     syncFilterButtons();
+    syncMergeButton();
     applyHoldingsFilters();
 });
 
@@ -1266,13 +1273,21 @@ async function submitOrderModal() {
     }
 }
 
-function toggleMergeView() {
-    mergeViewOn = !mergeViewOn;
+// Shared by toggleMergeView() and the initial page-load restore (see
+// DOMContentLoaded below) - the button's visual state has to match
+// mergeViewOn whichever path set it, not just a user click.
+function syncMergeButton() {
     const btn = document.getElementById('mergeAccountsBtn');
     if (btn) {
         btn.classList.toggle('oa-toggle-active', mergeViewOn);
         btn.classList.toggle('oa-toggle-inactive', !mergeViewOn);
     }
+}
+
+function toggleMergeView() {
+    mergeViewOn = !mergeViewOn;
+    syncMergeButton();
+    saveHoldingsPrefs();
     // Route through applyHoldingsFilters() either way (not renderMergedView()
     // directly) so the summary stats/allocation/footer recompute runs
     // consistently regardless of whether merge was just turned on or off.
@@ -1294,6 +1309,7 @@ function clearMergedView() {
 function renderMergedView() {
     clearMergedView();
     const tbody = document.getElementById('holdingsTbody');
+    if (!tbody) return; // no holdings at all - see sortHoldings()'s note
     const visibleRows = Array.from(tbody.querySelectorAll('tr:not(.hidden):not(.merged-row)'));
 
     const groups = {};

@@ -372,11 +372,12 @@ function loadPositionsPrefs() {
             positionsFilters.exchange = saved.filters.exchange || [];
         }
         if (saved.grouping) positionsGrouping = saved.grouping;
+        mergeViewOn = !!saved.mergeViewOn;
     } catch (e) { /* ignore malformed prefs */ }
 }
 
 function savePositionsPrefs() {
-    localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify({ filters: positionsFilters, grouping: positionsGrouping }));
+    localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify({ filters: positionsFilters, grouping: positionsGrouping, mergeViewOn }));
 }
 
 function toggleChipFilter(type, value, btn) {
@@ -539,10 +540,14 @@ function applyPositionsFilters() {
     const finalRows = Array.from(document.querySelectorAll('#positionsTbody tr:not(.group-header-row):not(.merge-hidden)'));
     const visible = finalRows.filter(row => row.dataset.filteredVisible === '1').length;
     const total = finalRows.length;
-    document.getElementById('positionsCount').textContent = hasActive
-        ? `${visible} of ${total} position${total === 1 ? '' : 's'}`
-        : `${total} position${total === 1 ? '' : 's'}`;
-    document.getElementById('positionsNoMatch').classList.toggle('hidden', visible !== 0 || total === 0);
+    const positionsCountEl = document.getElementById('positionsCount');
+    if (positionsCountEl) {
+        positionsCountEl.textContent = hasActive
+            ? `${visible} of ${total} position${total === 1 ? '' : 's'}`
+            : `${total} position${total === 1 ? '' : 's'}`;
+    }
+    const positionsNoMatchEl = document.getElementById('positionsNoMatch');
+    if (positionsNoMatchEl) positionsNoMatchEl.classList.toggle('hidden', visible !== 0 || total === 0);
     document.getElementById('positionsFiltersDot').classList.toggle('hidden',
         !(positionsFilters.product.length || positionsFilters.direction.length || positionsFilters.exchange.length || positionsGrouping !== 'none'));
 }
@@ -570,6 +575,12 @@ function updateActiveFiltersBar(query, hasActive) {
 
 function regroupPositions() {
     const tbody = document.getElementById('positionsTbody');
+    // Called unconditionally from applyPositionsFilters() on every load and
+    // every filter/merge change - #positionsTbody doesn't exist at all when
+    // there are zero positions (the whole table is server-side conditional
+    // on positions_data, see the empty-state markup below), which otherwise
+    // threw on every single page load/toggle in that state.
+    if (!tbody) return;
     // Remove any existing synthetic group header rows
     tbody.querySelectorAll('.group-header-row').forEach(el => el.remove());
 
@@ -648,13 +659,21 @@ function toggleGroupCollapse(key) {
     regroupPositions();
 }
 
-function toggleMergeView() {
-    mergeViewOn = !mergeViewOn;
+// Shared by toggleMergeView() and the initial page-load restore (see
+// DOMContentLoaded below) - the button's visual state has to match
+// mergeViewOn whichever path set it, not just a user click.
+function syncMergeButton() {
     const btn = document.getElementById('mergePositionsBtn');
     if (btn) {
         btn.classList.toggle('oa-toggle-active', mergeViewOn);
         btn.classList.toggle('oa-toggle-inactive', !mergeViewOn);
     }
+}
+
+function toggleMergeView() {
+    mergeViewOn = !mergeViewOn;
+    syncMergeButton();
+    savePositionsPrefs();
     // Route through applyPositionsFilters() either way (not renderMergedView()
     // directly) so the totals/grouping recompute runs consistently regardless
     // of whether merge was just turned on or off.
@@ -680,6 +699,7 @@ function clearMergedView() {
 function renderMergedView() {
     clearMergedView();
     const tbody = document.getElementById('positionsTbody');
+    if (!tbody) return; // no positions at all - see regroupPositions()'s note
     const rows = Array.from(tbody.querySelectorAll('tr:not(.group-header-row):not(.merged-row)'))
         .filter(row => row.dataset.filteredVisible === '1');
 
@@ -798,6 +818,9 @@ function sortPositions(col) {
     positionsSort.dir = (positionsSort.col === col && positionsSort.dir === 'asc') ? 'desc' : 'asc';
     positionsSort.col = col;
     const tbody = document.getElementById('positionsTbody');
+    if (!tbody) return; // no positions at all - unreachable in practice
+    // (the header this is bound to doesn't exist either then), guarded for
+    // consistency with regroupPositions()/renderMergedView().
     const rows = Array.from(tbody.querySelectorAll('tr:not(.group-header-row)'));
     const dir = positionsSort.dir === 'asc' ? 1 : -1;
 
@@ -823,6 +846,7 @@ function sortPositions(col) {
 document.addEventListener('DOMContentLoaded', () => {
     loadPositionsPrefs();
     syncPositionsFilterButtons();
+    syncMergeButton();
     applyPositionsFilters();
 });
 
