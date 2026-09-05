@@ -7,7 +7,7 @@ change, or whenever one of these actually bites.
 | # | Severity | Area | Status |
 |---|---|---|---|
 | 1 | 🟠 Medium | Dashboard — `/api/accounts/<id>/funds` | Open |
-| 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Open |
+| 2 | 🟡 Low (cosmetic) | Trade Book — timestamp display | Fix filed upstream, pending live verification |
 | 3 | 🟡 Low (feature gap) | Order Book / Trade Book — missing OpenAlgo features | Open |
 | 4 | 🟡 Low (feature gap) | Holdings — architectural gaps vs OpenAlgo (needs live infra) | Open |
 | 5 | 🟡 Low (feature gap) | Positions — Account column removed, needs a new home (Holdings resolved) | Open |
@@ -51,6 +51,23 @@ one.
 ### 2. Trade Book timestamps missing the date for some accounts (Zerodha `order_timestamp` inconsistency)
 **Where:** `app/templates/trading/tradebook.html:102` (`{{ trade.timestamp ... }}`), sourced from OpenAlgo `broker/zerodha/mapping/order_data.py:151` (`transform_tradebook_data`)
 
+**Root cause found and fixed upstream 2026-09-06** - not a Zerodha backend
+quirk after all. Kite's own docs (kite.trade/docs/connect/v3/orders/)
+document `order_timestamp` as an order-level field ("when the order was
+registered by the API"), identical across every fill under one multi-fill
+order - not the per-trade fill time. `fill_timestamp` ("when the trade was
+filled at the exchange") is the field actually correct for a trade record,
+and OpenAlgo's own `blueprints/pnltracker.py` already independently falls
+back to it when `timestamp` looks wrong, corroborating this was already
+suspected. Filed as [openalgo#2006](https://github.com/marketcalls/openalgo/issues/2006)
+/ [PR #2007](https://github.com/marketcalls/openalgo/pull/2007), applied
+to our fork's `upgrade-main-2026-09` branch - **not yet deployed or
+live-verified** (filed over a weekend with all 3 VMs off; next step is
+confirming on a real account, iram's in particular, once a VM is back up).
+See `openalgo/SKYSHIELD_PATCHES.md`'s 2026-09-06 entry for the full
+writeup. The display-side workaround below is superseded by this - no
+longer needed once the upstream fix is live.
+
 On 2026-08-18, iram's (acc2, Zerodha) rows on the Trade Book page showed
 time-only values (`09:30:02`) while arsalan's (acc1, also Zerodha) and
 iqbal's (acc3, Kotak/Analyzer) rows on the same page showed full
@@ -78,11 +95,11 @@ explanation given what's verifiable in our own code, not a certainty.
 **Impact:** cosmetic only — qty/price/P&L/order ID are unaffected, only the
 displayed date prefix is missing for the affected rows.
 
-**Proposed fix (not yet implemented):** display-side normalization in
-`tradebook.html` (or wherever `trade.timestamp` is assembled) — if the value
-doesn't match a full-date pattern, prepend the trade's own date (available
-elsewhere in the same response, or today's date since Kite's `/trades` only
-ever returns the current session's trades) before rendering.
+**Superseded display-side workaround (not needed once the upstream fix
+lands):** normalization in `tradebook.html` (or wherever `trade.timestamp`
+is assembled) — if the value doesn't match a full-date pattern, prepend the
+trade's own date before rendering. Left here only in case the upstream fix
+is delayed and a stopgap is needed sooner.
 
 ### 3. Order Book / Trade Book missing several real OpenAlgo features (deferred scope, not a defect)
 **Where:** `app/templates/trading/orderbook.html`, `app/templates/trading/tradebook.html`
