@@ -19,6 +19,7 @@ pages. See project_algomirror_ui_redesign_plan.md for why.
 
 {% set profile_items = [
     {'endpoint': 'auth.change_password', 'label': 'Profile Settings', 'icon': user},
+    {'endpoint': 'trading.pnl_history_page', 'label': 'P&L History', 'icon': pnl},
     {'endpoint': 'margin.dashboard', 'label': 'Margin', 'icon': margin},
 ] + ([{'endpoint': 'strategy.create_new_strategy', 'label': 'Strategy', 'icon': strategy}] if strategy_engine_enabled else []) + [
     {'endpoint': 'settings.index', 'label': 'Trading Settings', 'icon': settings},

@@ -1,0 +1,370 @@
+{% extends "layout.html" %}
+{% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, card, card_content %}
+
+{% block title %}P&L History - AlgoMirror{% endblock %}
+
+{% block content %}
+<div id="pnlHistoryPageWrap" class="space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight">P&L History</h1>
+            <p class="text-muted-foreground">
+                Realized profit and loss across a date range, merged across every selected account
+            </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            {{ account_filter(accounts, selected_account_ids, 'trading.pnl_history_page', on_change_js='onPnlHistoryAccountFilterChange') }}
+            {% if accounts %}
+            <button type="button" id="pnlHistoryImportBtn" class="{{ button('outline', 'sm') }}" onclick="pnlHistoryImportModal.showModal()">
+                Upload CSV
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not accounts %}
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
+            <h2 class="text-2xl font-bold mb-2">No Active Accounts</h2>
+            <p class="text-muted-foreground">Add a trading account to see its P&amp;L history here.</p>
+            <div class="mt-6">
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">Add Account</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- Filters: Segment, Symbol, Date range, Fetch - same order as
+         OpenAlgo's own PnlHistory.tsx filter row. -->
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-6') }}">
+            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Segment</span></label>
+                    <select id="pnlHistorySegment" class="select select-bordered select-sm">
+                        <option value="">All</option>
+                        <option value="equity">Equity</option>
+                        <option value="fno">Futures &amp; Options</option>
+                        <option value="currency">Currency</option>
+                        <option value="commodity">Commodity</option>
+                        <option value="mutual_fund">Mutual Funds</option>
+                    </select>
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Symbol</span></label>
+                    <input type="text" id="pnlHistorySymbol" placeholder="e.g. INFY" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Start date</span></label>
+                    <input type="date" id="pnlHistoryStartDate" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">End date</span></label>
+                    <input type="date" id="pnlHistoryEndDate" class="input input-bordered input-sm">
+                </div>
+                <button type="button" id="pnlHistoryFetchBtn" class="{{ button('default', 'sm') }}" onclick="loadPnlHistory()">
+                    <span id="pnlHistoryFetchLabel">Fetch</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="pnlHistoryError" class="hidden alert alert-error"></div>
+    <div id="pnlHistoryFailedAccountsWarning" class="hidden alert alert-warning"></div>
+
+    <div id="pnlHistoryEmpty" class="text-center py-16 text-muted-foreground">
+        <p class="font-medium">Build a report</p>
+        <p class="text-sm">Pick a date range above and click Fetch</p>
+    </div>
+
+    <div id="pnlHistoryContent" class="hidden space-y-4">
+        <div class="grid gap-4 md:grid-cols-2">
+            <div class="border border-border rounded-lg px-4 py-3 bg-card shadow-sm">
+                <div class="text-xs text-muted-foreground">Total Realized P&amp;L</div>
+                <div id="pnlHistoryTotal" class="text-2xl font-bold"></div>
+            </div>
+            <div class="border border-border rounded-lg px-4 py-3 bg-card shadow-sm">
+                <div class="text-xs text-muted-foreground">Closed Trades</div>
+                <div id="pnlHistoryTradeCount" class="text-2xl font-bold"></div>
+            </div>
+        </div>
+
+        <!-- Heat map, always visible above the toggle - matches OpenAlgo's
+             own placement decision (single at-a-glance summary, not a
+             third detail view to switch to). -->
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-6') }}">
+                <h3 class="font-semibold mb-1">Heat Map</h3>
+                <p class="text-sm text-muted-foreground mb-3">Daily realized P&amp;L - darker means a larger profit or loss. Hover a day for details.</p>
+                <div id="pnlHistoryHeatmap" class="overflow-x-auto pb-2"></div>
+                <div class="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+                    <span>Loss</span>
+                    <span class="w-4 h-4 rounded-sm" style="background-color: rgba(239, 68, 68, 0.9)"></span>
+                    <span class="w-4 h-4 rounded-sm" style="background-color: rgba(239, 68, 68, 0.3)"></span>
+                    <span class="w-4 h-4 rounded-sm" style="background-color: rgba(148, 163, 184, 0.3)"></span>
+                    <span class="w-4 h-4 rounded-sm" style="background-color: rgba(34, 197, 94, 0.3)"></span>
+                    <span class="w-4 h-4 rounded-sm" style="background-color: rgba(34, 197, 94, 0.9)"></span>
+                    <span>Profit</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs tabs-boxed bg-base-200 w-fit p-1">
+            <a class="tab tab-active" id="pnlHistoryTabDay" onclick="setPnlHistoryView('day')">Day-wise</a>
+            <a class="tab" id="pnlHistoryTabScrip" onclick="setPnlHistoryView('scrip')">Scrip-wise</a>
+        </div>
+
+        <div id="pnlHistoryDayView" class="{{ card() }}">
+            <div class="{{ card_content('pt-6') }}">
+                <div class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                            <tr><th>Date</th><th class="text-right">Trades</th><th class="text-right">Realized P&amp;L</th></tr>
+                        </thead>
+                        <tbody id="pnlHistoryDayBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="pnlHistoryScripView" class="{{ card() }} hidden">
+            <div class="{{ card_content('pt-6') }}">
+                <div class="overflow-x-auto">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th><th>Exchange</th><th>Product</th>
+                                <th class="text-right">Qty</th><th class="text-right">Buy Value</th>
+                                <th class="text-right">Sell Value</th><th class="text-right">Trades</th>
+                                <th class="text-right">Realized P&amp;L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pnlHistoryScripBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- CSV backfill - single-account target, since a CSV only ever belongs to
+     one broker session (unlike everything else on this page, which merges
+     across whatever accounts are selected). -->
+<dialog id="pnlHistoryImportModal" class="modal">
+    <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-1">Import P&amp;L History</h3>
+        <p class="text-sm text-base-content/60 mb-4">
+            Upload an exported tradebook CSV to backfill one account's history for dates before its
+            daily capture started.
+        </p>
+        <div class="form-control mb-3">
+            <label class="label"><span class="label-text">Account</span></label>
+            <select id="pnlHistoryImportAccount" class="select select-bordered">
+                {% for account in accounts %}
+                <option value="{{ account.id }}">{{ account.account_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control mb-3">
+            <label class="label"><span class="label-text">Tradebook CSV</span></label>
+            <input type="file" id="pnlHistoryImportFile" accept=".csv" class="file-input file-input-bordered">
+        </div>
+        <div id="pnlHistoryImportError" class="hidden alert alert-error text-sm mb-2"></div>
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="pnlHistoryImportModal.close()">Cancel</button>
+            <button type="button" id="pnlHistoryImportSubmitBtn" class="btn btn-primary btn-sm" onclick="submitPnlHistoryImport()">Upload</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}"></script>
+<script>
+let lastPnlHistoryData = null;
+let pnlHistoryView = 'day';
+
+function pnlHistorySevenDaysAgoStr() {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+}
+function pnlHistoryTodayStr() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function formatRupee(value) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}₹${Number(value).toFixed(2)}`;
+}
+
+// Checked account ids from the account_filter dropdown, or [] meaning "all"
+// (matches applyAccountFilter's own "all checked -> no ?account= params"
+// convention in macros/account_filter.html).
+function pnlHistorySelectedAccountIds() {
+    const boxes = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox');
+    const checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    if (boxes.length === 0 || checked.length === boxes.length) return [];
+    return Array.prototype.map.call(checked, cb => cb.value);
+}
+
+// Callback mode for account_filter (see macros/account_filter.html) - a
+// page-reload here would also drop the Segment/Symbol/date filters, so
+// this re-fetches in place instead.
+function onPnlHistoryAccountFilterChange() {
+    if (lastPnlHistoryData) loadPnlHistory();
+}
+
+function setPnlHistoryView(view) {
+    pnlHistoryView = view;
+    document.getElementById('pnlHistoryTabDay').classList.toggle('tab-active', view === 'day');
+    document.getElementById('pnlHistoryTabScrip').classList.toggle('tab-active', view === 'scrip');
+    document.getElementById('pnlHistoryDayView').classList.toggle('hidden', view !== 'day');
+    document.getElementById('pnlHistoryScripView').classList.toggle('hidden', view !== 'scrip');
+}
+
+async function loadPnlHistory() {
+    const startDate = document.getElementById('pnlHistoryStartDate').value;
+    const endDate = document.getElementById('pnlHistoryEndDate').value;
+    const errorEl = document.getElementById('pnlHistoryError');
+    const failedEl = document.getElementById('pnlHistoryFailedAccountsWarning');
+    const emptyEl = document.getElementById('pnlHistoryEmpty');
+    const contentEl = document.getElementById('pnlHistoryContent');
+    const fetchBtn = document.getElementById('pnlHistoryFetchBtn');
+    const fetchLabel = document.getElementById('pnlHistoryFetchLabel');
+
+    if (!startDate || !endDate) {
+        errorEl.textContent = 'Select both a start and end date';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    errorEl.classList.add('hidden');
+    failedEl.classList.add('hidden');
+    fetchBtn.disabled = true;
+    fetchLabel.textContent = 'Loading...';
+
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    const segment = document.getElementById('pnlHistorySegment').value;
+    const symbol = document.getElementById('pnlHistorySymbol').value.trim();
+    if (segment) params.set('segment', segment);
+    if (symbol) params.set('symbol', symbol.toUpperCase());
+    pnlHistorySelectedAccountIds().forEach(id => params.append('account', id));
+
+    try {
+        const response = await fetch(`{{ url_for('trading.pnl_history_combined') }}?${params.toString()}`);
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'Failed to load P&L history');
+        }
+        lastPnlHistoryData = result.data;
+        emptyEl.classList.add('hidden');
+        contentEl.classList.remove('hidden');
+        renderPnlHistory(lastPnlHistoryData);
+
+        const failedAccounts = lastPnlHistoryData.failed_accounts || [];
+        if (failedAccounts.length > 0) {
+            failedEl.textContent = `Could not fetch data for: ${failedAccounts.join(', ')} - the totals below don't include ${failedAccounts.length > 1 ? 'these accounts' : 'this account'}.`;
+            failedEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        errorEl.textContent = e.message || 'Failed to load P&L history';
+        errorEl.classList.remove('hidden');
+    } finally {
+        fetchBtn.disabled = false;
+        fetchLabel.textContent = 'Fetch';
+    }
+}
+
+function renderPnlHistory(data) {
+    const totalEl = document.getElementById('pnlHistoryTotal');
+    totalEl.textContent = formatRupee(data.total_realized_pnl);
+    totalEl.style.color = data.total_realized_pnl >= 0 ? '#22c55e' : '#ef4444';
+    document.getElementById('pnlHistoryTradeCount').textContent = data.trade_count;
+
+    const startDate = document.getElementById('pnlHistoryStartDate').value;
+    const endDate = document.getElementById('pnlHistoryEndDate').value;
+    const heatmapDays = (data.daily || []).map(row => ({
+        date: row.date,
+        value: row.realized_pnl,
+        tooltip: `${row.date}: ${formatRupee(row.realized_pnl)} (${row.trade_count} trade${row.trade_count === 1 ? '' : 's'})`,
+    }));
+    renderCalendarHeatmap('pnlHistoryHeatmap', heatmapDays, startDate, endDate, pnlHeatColor);
+
+    const dayBody = document.getElementById('pnlHistoryDayBody');
+    dayBody.innerHTML = (data.daily || []).length === 0
+        ? '<tr><td colspan="3" class="text-center text-muted-foreground py-8">No closed trades in this date range</td></tr>'
+        : (data.daily || []).map(row => `
+            <tr>
+                <td>${row.date}</td>
+                <td class="text-right">${row.trade_count}</td>
+                <td class="text-right font-medium" style="color:${row.realized_pnl >= 0 ? '#22c55e' : '#ef4444'}">${formatRupee(row.realized_pnl)}</td>
+            </tr>
+        `).join('');
+
+    const scripBody = document.getElementById('pnlHistoryScripBody');
+    scripBody.innerHTML = (data.scrip_rows || []).length === 0
+        ? '<tr><td colspan="8" class="text-center text-muted-foreground py-8">No closed trades in this date range</td></tr>'
+        : (data.scrip_rows || []).map(row => `
+            <tr>
+                <td>${row.symbol}</td>
+                <td>${row.exchange}</td>
+                <td>${row.product || '-'}</td>
+                <td class="text-right">${row.quantity}</td>
+                <td class="text-right">${formatRupee(row.buy_value)}</td>
+                <td class="text-right">${formatRupee(row.sell_value)}</td>
+                <td class="text-right">${row.trade_count}</td>
+                <td class="text-right font-medium" style="color:${row.realized_pnl >= 0 ? '#22c55e' : '#ef4444'}">${formatRupee(row.realized_pnl)}</td>
+            </tr>
+        `).join('');
+}
+
+async function submitPnlHistoryImport() {
+    const accountId = document.getElementById('pnlHistoryImportAccount').value;
+    const fileInput = document.getElementById('pnlHistoryImportFile');
+    const errorEl = document.getElementById('pnlHistoryImportError');
+    const submitBtn = document.getElementById('pnlHistoryImportSubmitBtn');
+    errorEl.classList.add('hidden');
+
+    if (!fileInput.files.length) {
+        errorEl.textContent = 'Please select a CSV file';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('account_id', accountId);
+    formData.append('file', fileInput.files[0]);
+
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch('{{ url_for("trading.pnl_history_import") }}', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'Failed to import CSV');
+        }
+        const d = result.data || {};
+        pnlHistoryImportModal.close();
+        fileInput.value = '';
+        if (lastPnlHistoryData) loadPnlHistory();
+    } catch (e) {
+        errorEl.textContent = e.message || 'Failed to import CSV';
+        errorEl.classList.remove('hidden');
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    {% if accounts %}
+    document.getElementById('pnlHistoryStartDate').value = pnlHistorySevenDaysAgoStr();
+    document.getElementById('pnlHistoryEndDate').value = pnlHistoryTodayStr();
+    loadPnlHistory();
+    {% endif %}
+});
+</script>
+{% endblock %}

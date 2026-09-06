@@ -52,6 +52,66 @@
         </div>
     </div>
 
+    <!-- Historical filters (fork-only): a date range other than today
+         switches from the live tradebook() call above to the ledger-backed
+         /api/v1/pnl/trades per account (see app/utils/tradebook_combined.py
+         and OpenAlgo's own isHistorical switch in TradeBook.tsx). Segment/
+         Symbol apply on Fetch, same as OpenAlgo's own explicit-Fetch UX. -->
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-6') }}">
+            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Segment</span></label>
+                    <select id="tbSegment" class="select select-bordered select-sm">
+                        <option value="">All</option>
+                        <option value="equity">Equity</option>
+                        <option value="fno">Futures &amp; Options</option>
+                        <option value="currency">Currency</option>
+                        <option value="commodity">Commodity</option>
+                        <option value="mutual_fund">Mutual Funds</option>
+                    </select>
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Symbol</span></label>
+                    <input type="text" id="tbSymbol" placeholder="e.g. INFY" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Start date</span></label>
+                    <input type="date" id="tbStartDate" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">End date</span></label>
+                    <input type="date" id="tbEndDate" class="input input-bordered input-sm">
+                </div>
+                <button type="button" id="tbFetchBtn" class="{{ button('default', 'sm') }}" onclick="fetchTradebookCombined()">
+                    <span id="tbFetchLabel">Fetch</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="tbFetchError" class="hidden alert alert-error"></div>
+    <div id="tbFailedAccountsWarning" class="hidden alert alert-warning"></div>
+
+    <!-- Heat map: blue by trade count, matching OpenAlgo's own Trade Book
+         heat map. Computed from whatever's currently loaded - the
+         server-rendered live-today trades initially, or the fetched
+         historical/filtered set after Fetch. -->
+    <div id="tbHeatmapCard" class="{{ card() }} hidden">
+        <div class="{{ card_content('pt-6') }}">
+            <h3 class="font-semibold mb-1">Heat Map</h3>
+            <p class="text-sm text-muted-foreground mb-3">Trades per day - darker means more trades. Hover a day for details.</p>
+            <div id="tbHeatmap" class="overflow-x-auto pb-2"></div>
+            <div class="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+                <span>Fewer</span>
+                <span class="w-4 h-4 rounded-sm" style="background-color: rgba(59, 130, 246, 0.2)"></span>
+                <span class="w-4 h-4 rounded-sm" style="background-color: rgba(59, 130, 246, 0.45)"></span>
+                <span class="w-4 h-4 rounded-sm" style="background-color: rgba(59, 130, 246, 0.7)"></span>
+                <span class="w-4 h-4 rounded-sm" style="background-color: rgba(59, 130, 246, 0.9)"></span>
+                <span>More</span>
+            </div>
+        </div>
+    </div>
+
     {% if tradebook_data %}
     {% set buy_count = tradebook_data | selectattr('action', 'equalto', 'BUY') | list | length %}
     {% set sell_count = tradebook_data | selectattr('action', 'equalto', 'SELL') | list | length %}
@@ -60,29 +120,29 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Total Trades</div>
-                <div class="{{ card_title() }} text-2xl">{{ tradebook_data|length }}</div>
+                <div id="tbStatTotal" class="{{ card_title() }} text-2xl">{{ tradebook_data|length }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Buy Trades</div>
-                <div class="{{ card_title() }} text-2xl text-green-600 flex items-center gap-2">
-                    {{ trending_up('h-5 w-5') }}{{ buy_count }}
+                <div id="tbStatBuy" class="{{ card_title() }} text-2xl text-green-600 flex items-center gap-2">
+                    {{ trending_up('h-5 w-5') }}<span>{{ buy_count }}</span>
                 </div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Sell Trades</div>
-                <div class="{{ card_title() }} text-2xl text-red-600 flex items-center gap-2">
-                    {{ trending_down('h-5 w-5') }}{{ sell_count }}
+                <div id="tbStatSell" class="{{ card_title() }} text-2xl text-red-600 flex items-center gap-2">
+                    {{ trending_down('h-5 w-5') }}<span>{{ sell_count }}</span>
                 </div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Net P&amp;L</div>
-                <div class="{{ card_title() }} text-2xl {{ 'text-green-600' if total_pnl >= 0 else 'text-red-600' }}">
+                <div id="tbStatNetPnl" class="{{ card_title() }} text-2xl {{ 'text-green-600' if total_pnl >= 0 else 'text-red-600' }}">
                     ₹{{ "%.2f"|format(total_pnl) }}
                 </div>
             </div>
@@ -92,7 +152,7 @@
     <!-- Trades Table -->
     <div class="{{ card() }}">
         <div class="{{ card_content('pt-6') }}">
-            <h2 class="font-semibold mb-3">Executed Trades</h2>
+            <h2 id="tbTableHeading" class="font-semibold mb-3">Executed Trades</h2>
 
             <div class="overflow-x-auto">
                 <table class="table table-sm">
@@ -112,7 +172,7 @@
                             <th>Order ID</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="tbTableBody">
                         {% for trade in tradebook_data %}
                         <tr class="hover">
                             <td class="text-xs">{{ trade.timestamp if trade.timestamp else trade.filltime if trade.filltime else '-' }}</td>
@@ -178,8 +238,184 @@
     {% endif %}
 </div>
 
+<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}"></script>
 <script>
 // Auto-refresh disabled - use manual refresh button instead
+
+// The server-rendered live-today trades, embedded so the heat map can be
+// computed on load without an extra request - the initial Jinja-rendered
+// table itself is untouched (see tradebook() route). A Fetch click below
+// replaces both the table and this variable with the new endpoint's data.
+let tbLastTrades = {{ tradebook_data | tojson }};
+
+// Mirrors OpenAlgo's EXCHANGE_SEGMENT_MAP/segmentOf (TradeBook.tsx) - a
+// live-today trade has no `segment` field at all (the broker's own
+// tradebook API doesn't have this concept), so it's derived from exchange;
+// historical rows from /pnl/trades already carry the real stored value.
+const TB_EXCHANGE_SEGMENT_MAP = {
+    NSE: 'equity', BSE: 'equity', NFO: 'fno', BFO: 'fno',
+    CDS: 'currency', BCD: 'currency', MCX: 'commodity', NCDEX: 'commodity', NCO: 'commodity',
+};
+function tbSegmentOf(trade) {
+    return trade.segment || TB_EXCHANGE_SEGMENT_MAP[trade.exchange];
+}
+
+function tbDateKeyOf(timestamp) {
+    if (!timestamp) return '';
+    const isoMatch = String(timestamp).match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+    const d = new Date(timestamp);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA');
+}
+
+function tbTodayStr() {
+    return new Date().toISOString().split('T')[0];
+}
+function tbSevenDaysAgoStr() {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+}
+
+function tbSelectedAccountIds() {
+    const boxes = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox');
+    const checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    if (boxes.length === 0 || checked.length === boxes.length) return [];
+    return Array.prototype.map.call(checked, cb => cb.value);
+}
+
+function tbApplyFilters(trades) {
+    const segment = document.getElementById('tbSegment').value;
+    const symbol = document.getElementById('tbSymbol').value.trim().toUpperCase();
+    return trades.filter(t => {
+        if (segment && tbSegmentOf(t) !== segment) return false;
+        if (symbol && !(t.symbol || '').toUpperCase().includes(symbol)) return false;
+        return true;
+    });
+}
+
+function tbRenderHeatmap(trades) {
+    const startDate = document.getElementById('tbStartDate').value || tbSevenDaysAgoStr();
+    const endDate = document.getElementById('tbEndDate').value || tbTodayStr();
+    const counts = {};
+    trades.forEach(t => {
+        const key = tbDateKeyOf(t.timestamp || t.filltime);
+        if (!key) return;
+        counts[key] = (counts[key] || 0) + 1;
+    });
+    const days = Object.keys(counts).map(date => ({
+        date, value: counts[date], tooltip: `${date}: ${counts[date]} trade${counts[date] === 1 ? '' : 's'}`,
+    }));
+    const heatmapCard = document.getElementById('tbHeatmapCard');
+    if (!heatmapCard) return;
+    heatmapCard.classList.toggle('hidden', days.length === 0);
+    if (days.length > 0) {
+        renderCalendarHeatmap('tbHeatmap', days, startDate, endDate, tradeCountHeatColor);
+    }
+}
+
+function tbFormatRupee(value) {
+    return `₹${Number(value || 0).toFixed(2)}`;
+}
+
+function tbRenderTable(trades) {
+    // The "No Trades" empty state (tradebook.html's other Jinja branch)
+    // doesn't render the stats cards or table at all - a Fetch that lands
+    // on that branch's page (today's live view had zero trades) has
+    // nothing to inject into. Historical results in that case are still
+    // visible via the heat map's tooltips would need a page with the
+    // table present; treat this as a known limitation of staying additive
+    // to the existing page rather than restructuring its empty-state
+    // toggle.
+    const body = document.getElementById('tbTableBody');
+    if (!body) return;
+
+    const accountIds = new Set(trades.map(t => String(t.account_id)));
+    const showAccountCol = accountIds.size > 1;
+    const buyCount = trades.filter(t => t.action === 'BUY').length;
+    const sellCount = trades.length - buyCount;
+    let netPnl = 0;
+    trades.forEach(t => {
+        const value = parseFloat(t.trade_value) || 0;
+        netPnl += t.action === 'SELL' ? value : -value;
+    });
+
+    document.getElementById('tbStatTotal').textContent = trades.length;
+    document.getElementById('tbStatBuy').querySelector('span').textContent = buyCount;
+    document.getElementById('tbStatSell').querySelector('span').textContent = sellCount;
+    const netPnlEl = document.getElementById('tbStatNetPnl');
+    netPnlEl.textContent = tbFormatRupee(netPnl);
+    netPnlEl.classList.toggle('text-green-600', netPnl >= 0);
+    netPnlEl.classList.toggle('text-red-600', netPnl < 0);
+
+    if (trades.length === 0) {
+        body.innerHTML = `<tr><td colspan="${showAccountCol ? 9 : 8}" class="text-center text-muted-foreground py-8">No trades match these filters</td></tr>`;
+        return;
+    }
+    body.innerHTML = trades.map(t => `
+        <tr class="hover">
+            <td class="text-xs">${t.timestamp || t.filltime || '-'}</td>
+            ${showAccountCol ? `<td class="text-xs">${t.account_name || ''}</td>` : ''}
+            <td class="font-semibold">${t.symbol || ''}</td>
+            <td>${t.exchange || ''}</td>
+            <td>${t.action || ''}</td>
+            <td>${t.product || ''}</td>
+            <td class="font-mono">${t.quantity || ''}</td>
+            <td class="font-mono">${tbFormatRupee(t.average_price)}</td>
+            <td class="font-mono">${tbFormatRupee(t.trade_value)}</td>
+            <td class="font-mono text-xs">${t.orderid || ''}</td>
+        </tr>
+    `).join('');
+}
+
+async function fetchTradebookCombined() {
+    const startDate = document.getElementById('tbStartDate').value;
+    const endDate = document.getElementById('tbEndDate').value;
+    const errorEl = document.getElementById('tbFetchError');
+    const failedEl = document.getElementById('tbFailedAccountsWarning');
+    const fetchBtn = document.getElementById('tbFetchBtn');
+    const fetchLabel = document.getElementById('tbFetchLabel');
+
+    errorEl.classList.add('hidden');
+    failedEl.classList.add('hidden');
+    fetchBtn.disabled = true;
+    fetchLabel.textContent = 'Loading...';
+
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    tbSelectedAccountIds().forEach(id => params.append('account', id));
+
+    try {
+        const response = await fetch(`{{ url_for('trading.tradebook_combined') }}?${params.toString()}`);
+        const result = await response.json();
+        if (result.status !== 'success') {
+            throw new Error(result.message || 'Failed to fetch trades');
+        }
+        tbLastTrades = result.data.trades || [];
+        const filtered = tbApplyFilters(tbLastTrades);
+        tbRenderTable(filtered);
+        tbRenderHeatmap(filtered);
+
+        const failedAccounts = result.data.failed_accounts || [];
+        if (failedAccounts.length > 0) {
+            failedEl.textContent = `Could not fetch data for: ${failedAccounts.join(', ')}.`;
+            failedEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        errorEl.textContent = e.message || 'Failed to fetch trades';
+        errorEl.classList.remove('hidden');
+    } finally {
+        fetchBtn.disabled = false;
+        fetchLabel.textContent = 'Fetch';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('tbStartDate').value = tbTodayStr();
+    document.getElementById('tbEndDate').value = tbTodayStr();
+    tbRenderHeatmap(tbLastTrades);
+});
 
 function exportToCSV(type) {
     // Get the table

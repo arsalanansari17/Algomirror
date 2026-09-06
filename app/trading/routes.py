@@ -10,6 +10,8 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
+from app.utils.pnl_history_combined import compute_combined_pnl_history
+from app.utils.tradebook_combined import compute_combined_tradebook
 from datetime import datetime
 import json
 import time
@@ -419,6 +421,116 @@ def pnl_combined():
     except Exception as e:
         current_app.logger.exception(f'Error computing combined intraday P&L: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L'}), 500
+
+    return jsonify({'status': 'success', 'data': data})
+
+
+@trading_bp.route('/pnl-history')
+@login_required
+def pnl_history_page():
+    """Consolidated multi-day P&L History page - a thin shell like
+    pnl_curve_page() above. All real data is fetched by the page's own JS
+    calling /trading/api/pnl-history-combined on load and on Fetch-click,
+    not server-rendered - the account/date/segment/symbol filters all need
+    to re-fetch without a full page reload, matching OpenAlgo's own React
+    page (frontend/src/pages/PnlHistory.tsx)."""
+    accounts = current_user.get_active_accounts()
+    return render_template(
+        'trading/pnl_history.html',
+        accounts=accounts,
+        selected_account_ids=get_selected_account_ids(),
+    )
+
+
+@trading_bp.route('/api/pnl-history-combined')
+@login_required
+@limiter.limit("20 per minute")
+def pnl_history_combined():
+    """Realized P&L for a date range, merged across every selected
+    account (see get_selected_accounts() above - the same ?account=
+    selection Funds/Orderbook/Tradebook/Positions/Holdings already use).
+    Each account's own OpenAlgo instance does the FIFO matching; this only
+    fetches and merges (app/utils/pnl_history_combined.py) - nothing here
+    is persisted, matching that endpoint's own compute-on-read design."""
+    accounts = get_selected_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
+
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    if not start_date or not end_date:
+        return jsonify({'status': 'error', 'message': 'start_date and end_date are required'}), 400
+    symbol = request.args.get('symbol') or None
+    segment = request.args.get('segment') or None
+
+    try:
+        data = compute_combined_pnl_history(accounts, start_date, end_date, symbol, segment)
+    except Exception as e:
+        current_app.logger.exception(f'Error computing combined P&L history: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L history'}), 500
+
+    return jsonify({'status': 'success', 'data': data})
+
+
+@trading_bp.route('/api/pnl-history-import', methods=['POST'])
+@login_required
+@limiter.limit("20 per minute")
+def pnl_history_import():
+    """Backfill one account's ledger from an exported tradebook CSV -
+    proxies to that account's own POST /api/v1/pnl/import. Import is
+    inherently single-account (unlike every other endpoint here, which
+    merges across whatever's selected) since a CSV only ever belongs to
+    one broker session."""
+    account_id = request.form.get('account_id', type=int)
+    if not account_id:
+        return jsonify({'status': 'error', 'message': 'account_id is required'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    upload = request.files.get('file')
+    if not upload:
+        return jsonify({'status': 'error', 'message': 'file is required'}), 400
+
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        result = client.import_pnl_csv(upload.read(), upload.filename)
+    except Exception as e:
+        current_app.logger.exception(f'Error importing P&L CSV for account {account_id}: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to import CSV'}), 500
+
+    status_code = 200 if result.get('status') == 'success' else 400
+    return jsonify(result), status_code
+
+
+@trading_bp.route('/api/tradebook-combined')
+@login_required
+@limiter.limit("20 per minute")
+def tradebook_combined():
+    """Trade Book data for the currently selected accounts, live-today by
+    default or historical when a real date range is given - see
+    app/utils/tradebook_combined.py for the isHistorical switch this
+    mirrors from OpenAlgo's own TradeBook.tsx. Backs both the historical
+    filter row and the blue trade-count heat map on the Trade Book page;
+    the page's default (untouched) view still renders server-side via the
+    existing /tradebook route above, unchanged."""
+    accounts = get_selected_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
+
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    symbol = request.args.get('symbol') or None
+    segment = request.args.get('segment') or None
+
+    try:
+        data = compute_combined_tradebook(accounts, start_date, end_date, symbol, segment)
+    except Exception as e:
+        current_app.logger.exception(f'Error computing combined tradebook: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to fetch trades'}), 500
 
     return jsonify({'status': 'success', 'data': data})
 
