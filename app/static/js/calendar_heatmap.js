@@ -77,8 +77,11 @@ function calendarHeatmapBuildMonthGroups(endDate) {
     return groups;
 }
 
-var CALENDAR_HEATMAP_CELL = 9;
-var CALENDAR_HEATMAP_GAP = 2;
+// Sized to match the Zerodha reference's visual weight (confirmed against
+// a real screenshot) - the first pass at 9px/2px read as too compact and
+// small next to it.
+var CALENDAR_HEATMAP_CELL = 16;
+var CALENDAR_HEATMAP_GAP = 3;
 
 /**
  * Renders a calendar heat map into the element with id `containerId`.
