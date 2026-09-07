@@ -1,75 +1,96 @@
 /*
- * Shared calendar-grid heat map renderer (fork-only P&L feature).
+ * Shared calendar heat map renderer (fork-only P&L feature).
  * Ports frontend/src/components/reports/CalendarHeatmap.tsx from the
- * OpenAlgo React app to vanilla JS - same month-enumeration/grid-cell
- * logic, since AlgoMirror's pages are server-rendered + vanilla JS, not
- * React. Used by both P&L History (green/red by realized P&L) and Trade
- * Book (blue by trade count) - each page supplies its own `days` array
- * and `colorFor` function; the grid layout itself is identical.
+ * OpenAlgo React app to vanilla JS - since AlgoMirror's pages are
+ * server-rendered + vanilla JS, not React. Used by both P&L History
+ * (green/red by realized P&L) and Trade Book (blue by trade count) - each
+ * page supplies its own `days` array and `colorFor` function; the layout
+ * itself is identical.
+ *
+ * Layout is a continuous strip - weeks as columns, Sun-Sat as rows, month
+ * labels placed under whichever column that month first appears in - a
+ * GitHub-contributions-graph style, matching Zerodha Console's own
+ * reference exactly (confirmed against a real Zerodha Console
+ * screenshot). An earlier version rendered separate bordered per-month
+ * calendar blocks instead; replaced because it doesn't match the
+ * reference and needs far more space (12 month-blocks wrap into several
+ * tall rows, where this layout fits a full year in ~740px of width and 7
+ * cells of height).
+ *
+ * Always a trailing 12-month frame ending at endDate's own month,
+ * regardless of how narrow the actual searched/filtered range is (another
+ * confirmed Zerodha behavior) - days outside the real fetched range still
+ * render, just very faint, so the frame's size never jumps around between
+ * a 7-day and a 90-day search.
  */
-
-// Always the trailing 12 months ending at endDate's month - matches
-// Zerodha Console's own heat map, which shows a full year of calendar
-// frame regardless of how narrow the actual searched/filtered range is.
-// startDate plays no part in the frame itself; renderCalendarHeatmapMonth's
-// own inRange check is what keeps days outside the real fetched range
-// blank within that wider 12-month frame.
-function calendarHeatmapEnumerateMonths(endDate) {
-    var eParts = endDate.split('-').map(Number);
-    var endIdx = eParts[0] * 12 + (eParts[1] - 1);
-    var startIdx = endIdx - 11;
-    var months = [];
-    for (var idx = startIdx; idx <= endIdx; idx++) {
-        months.push({ year: Math.floor(idx / 12), month: ((idx % 12) + 12) % 12 });
-    }
-    return months;
-}
 
 function calendarHeatmapUTCDateStr(year, month, day) {
     var d = new Date(Date.UTC(year, month, day));
     return d.toISOString().split('T')[0];
 }
 
-var CALENDAR_HEATMAP_WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-function renderCalendarHeatmapMonth(year, month, dayMap, maxAbs, startDate, endDate, colorFor) {
-    var firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
-    var daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    var cells = [];
-    for (var i = 0; i < firstWeekday; i++) cells.push(null);
-    for (var day = 1; day <= daysInMonth; day++) {
-        cells.push({ dateStr: calendarHeatmapUTCDateStr(year, month, day), day: day });
-    }
-    while (cells.length % 7 !== 0) cells.push(null);
-
-    var monthLabel = new Date(Date.UTC(year, month, 1)).toLocaleString('en-US', {
-        month: 'short', year: 'numeric', timeZone: 'UTC',
-    });
-
-    var html = '<div class="flex flex-col items-center gap-1">';
-    html += '<p class="text-xs font-medium text-base-content/60">' + monthLabel + '</p>';
-    html += '<div class="grid grid-cols-7 gap-0.5">';
-    CALENDAR_HEATMAP_WEEKDAY_LABELS.forEach(function (label) {
-        html += '<div class="w-6 h-3 text-[9px] leading-3 text-center text-base-content/60">' + label + '</div>';
-    });
-    cells.forEach(function (cell) {
-        if (!cell) {
-            html += '<div class="w-6 h-6"></div>';
-            return;
-        }
-        var inRange = cell.dateStr >= startDate && cell.dateStr <= endDate;
-        var entry = inRange ? dayMap[cell.dateStr] : undefined;
-        var bg = !inRange
-            ? 'transparent'
-            : entry ? colorFor(entry.value, maxAbs) : 'rgba(148, 163, 184, 0.12)';
-        var title = inRange ? (entry ? entry.tooltip : (cell.dateStr + ': no data')) : '';
-        html += '<div class="w-6 h-6 rounded-sm border border-base-300 flex items-center justify-center text-[9px] text-base-content/60" '
-            + 'style="background-color:' + bg + '" title="' + title.replace(/"/g, '&quot;') + '">'
-            + (inRange ? cell.day : '') + '</div>';
-    });
-    html += '</div></div>';
-    return html;
+function calendarHeatmapAddDays(dateStr, delta) {
+    var parts = dateStr.split('-').map(Number);
+    var dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    dt.setUTCDate(dt.getUTCDate() + delta);
+    return dt.toISOString().split('T')[0];
 }
+
+function calendarHeatmapMonthShortLabel(year, month) {
+    return new Date(Date.UTC(year, month, 1)).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+}
+
+// Continuous week-column grid for the trailing 12 months ending at
+// endDate's month. Weeks start on Sunday; the first/last columns are
+// padded with `null` cells outside the actual frame so every column has
+// exactly 7 entries. A month label is emitted for the first column in
+// which that month's days appear.
+function calendarHeatmapBuildColumns(endDate) {
+    var eParts = endDate.split('-').map(Number);
+    var ey = eParts[0], em = eParts[1];
+    var frameEnd = new Date(Date.UTC(ey, em, 0)).toISOString().split('T')[0]; // last day of endDate's month
+
+    var frameStartIdx = ey * 12 + (em - 1) - 11;
+    var frameStartYear = Math.floor(frameStartIdx / 12);
+    var frameStartMonth = ((frameStartIdx % 12) + 12) % 12;
+    var frameStart = calendarHeatmapUTCDateStr(frameStartYear, frameStartMonth, 1);
+
+    var frameStartWeekday = new Date(frameStart + 'T00:00:00Z').getUTCDay();
+    var gridStart = calendarHeatmapAddDays(frameStart, -frameStartWeekday);
+
+    var weeks = [];
+    var monthLabels = [];
+    var lastLabeledMonth = '';
+    var cursor = gridStart;
+    var col = 0;
+
+    while (cursor <= frameEnd) {
+        var week = [];
+        var monthOfLastRealDay = '';
+        for (var row = 0; row < 7; row++) {
+            if (cursor < frameStart || cursor > frameEnd) {
+                week.push(null);
+            } else {
+                week.push(cursor);
+                monthOfLastRealDay = cursor.slice(0, 7); // YYYY-MM
+            }
+            cursor = calendarHeatmapAddDays(cursor, 1);
+        }
+        if (monthOfLastRealDay && monthOfLastRealDay !== lastLabeledMonth) {
+            var mParts = monthOfLastRealDay.split('-').map(Number);
+            monthLabels.push({ col: col, label: calendarHeatmapMonthShortLabel(mParts[0], mParts[1] - 1) });
+            lastLabeledMonth = monthOfLastRealDay;
+        }
+        weeks.push(week);
+        col += 1;
+    }
+
+    return { weeks: weeks, monthLabels: monthLabels };
+}
+
+var CALENDAR_HEATMAP_CELL = 11;
+var CALENDAR_HEATMAP_GAP = 3;
+var CALENDAR_HEATMAP_STEP = CALENDAR_HEATMAP_CELL + CALENDAR_HEATMAP_GAP;
 
 /**
  * Renders a calendar heat map into the element with id `containerId`.
@@ -87,12 +108,38 @@ function renderCalendarHeatmap(containerId, days, startDate, endDate, colorFor) 
         maxAbs = Math.max(maxAbs, Math.abs(d.value));
     });
 
-    var months = calendarHeatmapEnumerateMonths(endDate);
-    var html = '<div class="flex flex-wrap gap-6">';
-    months.forEach(function (m) {
-        html += renderCalendarHeatmapMonth(m.year, m.month, dayMap, maxAbs, startDate, endDate, colorFor);
+    var built = calendarHeatmapBuildColumns(endDate);
+    var weeks = built.weeks;
+    var monthLabels = built.monthLabels;
+
+    var html = '<div class="inline-flex flex-col gap-1">';
+    html += '<div class="flex" style="gap:' + CALENDAR_HEATMAP_GAP + 'px">';
+    weeks.forEach(function (week) {
+        html += '<div class="flex flex-col" style="gap:' + CALENDAR_HEATMAP_GAP + 'px">';
+        week.forEach(function (dateStr) {
+            if (!dateStr) {
+                html += '<div style="width:' + CALENDAR_HEATMAP_CELL + 'px;height:' + CALENDAR_HEATMAP_CELL + 'px"></div>';
+                return;
+            }
+            var inRange = dateStr >= startDate && dateStr <= endDate;
+            var entry = inRange ? dayMap[dateStr] : undefined;
+            var bg = !inRange
+                ? 'rgba(148, 163, 184, 0.08)'
+                : entry ? colorFor(entry.value, maxAbs) : 'rgba(148, 163, 184, 0.15)';
+            var title = inRange ? (entry ? entry.tooltip : (dateStr + ': no data')) : '';
+            html += '<div class="rounded-sm" style="width:' + CALENDAR_HEATMAP_CELL + 'px;height:' + CALENDAR_HEATMAP_CELL + 'px;background-color:' + bg + '" title="' + title.replace(/"/g, '&quot;') + '"></div>';
+        });
+        html += '</div>';
     });
     html += '</div>';
+
+    html += '<div class="relative h-4" style="width:' + (weeks.length * CALENDAR_HEATMAP_STEP) + 'px">';
+    monthLabels.forEach(function (m) {
+        html += '<span class="absolute text-[9px] text-base-content/60" style="left:' + (m.col * CALENDAR_HEATMAP_STEP) + 'px">' + m.label + '</span>';
+    });
+    html += '</div>';
+    html += '</div>';
+
     container.innerHTML = html;
 }
 
