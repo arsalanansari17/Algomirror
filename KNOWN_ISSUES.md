@@ -230,3 +230,138 @@ one action - deliberately scoped out of that work at the user's request
 **Proposed fix:** none chosen yet - scope this properly (new route,
 failure policy, confirmation UX) before starting, rather than bolting it
 onto the existing single-account order modal.
+
+### 7. Analytics ideas discussed 2026-09-06 - not scoped, not started
+**Where:** P&L History (`app/templates/trading/pnl_history.html`,
+`app/utils/pnl_history_combined.py`), Positions, Holdings
+
+Brainstormed the day after the consolidated P&L History + Tradebook
+history feature landed (item 9e4e5ac). None of these are scoped or
+started - listed here so the ideas aren't lost, not as a commitment to
+build any of them. Ranked roughly by how directly they build on
+infrastructure that already exists.
+
+**P&L report:**
+- **Strategy-wise P&L** - tag closed trades by strategy (DonchianSwing,
+  IronCondor, IntradayIronFly, ...), not just symbol/segment. The
+  strategy-tagging concept already exists for Holdings
+  (`PositionTag` in `app/models.py`) - this would need the same idea
+  applied to trades/closed-trade rows instead of holdings rows. Answers
+  "which strategy is actually making money after costs," which nothing
+  built so far can answer.
+- **Win rate / expectancy per strategy or symbol** - win%, avg win, avg
+  loss, profit factor, computed from `closed_trades` (already
+  FIFO-matched, no new data needed).
+- **Charges/cost drag** - gross vs net P&L and cost as a % of gross, per
+  strategy. OpenAlgo's tradebook already carries per-trade charge data;
+  not yet surfaced anywhere in this feature.
+- **Equity curve + drawdown from realized P&L** - cumulative P&L line +
+  max drawdown/recovery time, per account and combined. Distinct from the
+  existing intraday-only `pnl_curve.py`/P&L Plot page (mark-to-market,
+  today only) - this would be multi-day, realized-only, built from the
+  same `daily` data the heat map already uses.
+
+**Positions:**
+- **Combined Greeks exposure** across accounts for the options books
+  (IronCondor/IntradayIronFly) - net delta/theta/vega, to catch
+  unintended directional exposure that looks fine per-account but isn't
+  in aggregate.
+- **Margin utilization over time** - capital is sized dynamically (85% of
+  cash+holdings, see SkyShieldAT's dynamic-capital change) and Kotak's
+  SPAN margin is a hardcoded estimate (`feat/kotak-span-margin`); a
+  historical utilization view would catch capital inefficiency or a
+  near-breach before it's a live problem instead of after.
+
+**Holdings:**
+- **Pledge coverage tracking over time** - related to the existing
+  "exit position if removed from pledge CSV" TODO in SkyShieldAT and the
+  manual pledge-CSV-sync pain point already logged there; a view showing
+  pledge utilization/coverage drifting over time turns that from
+  "noticed manually" into "visible before it's a problem."
+
+**Proposed fix:** none - this is an idea list, not a plan. Pick one,
+scope it properly (most of these need new tagging/capture, not just a
+new report view), before starting.
+
+### 8. Strategy attribution - CORRECTED 2026-09-07, then built the same day
+**Where:** OpenAlgo `database/strategy_book_db.py`, `services/pnl_capture_service.py`,
+`services/pnl_history_service.py`, `restx_api/pnl_history.py`,
+`database/pnl_db.py`; AlgoMirror `app/utils/openalgo_client.py`,
+`app/utils/pnl_history_combined.py`, `app/trading/routes.py`,
+`app/templates/trading/pnl_history.html`, `app/templates/trading/tradebook.html`
+
+**This entry originally claimed** (2026-09-07, same day) that
+SkyShieldAT's `strategy` field - required on every `placeorder` call - is
+submitted then genuinely discarded, never persisted anywhere. **That was
+wrong**, caught and corrected the same day before any code was written
+against the false premise. What was actually missed: OpenAlgo already has
+a real, already-running upstream feature called the strategy book
+(`database/strategy_book_db.py` + `subscribers/strategy_book_subscriber.py`,
+built for Flow's per-strategy risk management) whose own docstring says
+*"orders placed through `/api/v1` are tracked exactly like Flow-placed
+ones as long as they carry a `strategy`"* - a **generic** event-bus
+subscription (`order.placed`/`order.update`, plus the batch-completion
+topics), not a Flow-only hook. Verified directly against a real account's
+`openalgo.db`: 54 real `strategy_positions` rows, real strategy names
+(`DonchianSwing`, `IntradayIronFly`, `IronCondor`), persisting across days
+(only `today_realized_pnl` resets daily). So the capture problem was
+already solved; the actual gap was narrower - nothing exposed it via a
+REST endpoint or UI, and `PnlTrade` (the P&L History ledger) had no
+`strategy` column to filter/group by.
+
+**Built the same day** (not just proposed - both layers from the original
+correction, plus the AlgoMirror side, landed together per explicit user
+direction "everything at once"):
+
+- **`PnlTrade.strategy` column** (`database/pnl_db.py`, same migration
+  pattern as `segment`) - backfilled by the daily capture job and the CSV
+  import path, joining each fill's `orderid` against
+  `strategy_book_db.get_order_tag()` (already existed, previously only
+  called internally). `strategy` also became a third pre-filter alongside
+  segment/symbol (`_parse_range_and_build_query`) - applied to `PnlTrade`
+  rows *before* FIFO matching runs, not threaded through
+  `utils/pnl_fifo.py`'s lot objects, so a strategy-filtered response is
+  single-strategy by construction with zero changes to the FIFO matcher
+  itself.
+- **`GET /api/v1/pnl/strategy-legs`** (new, `restx_api/pnl_history.py`) -
+  a thin read wrapper over `strategy_book_db.get_strategy_legs()`. This
+  is "holdings, per strategy" already computed server-side (quantity,
+  average price, cumulative realized P&L per leg) - not derived from
+  `pnl_trades`/FIFO at all.
+- **`PATCH /api/v1/pnl/trades/<id>/strategy`** (new) - the manual fallback
+  for CSV-imported history and anything placed outside OpenAlgo entirely
+  (no `orderid` to join against). Both OpenAlgo's Trade Book (per-row
+  inline editor) and AlgoMirror's combined Trade Book proxy to this.
+- **AlgoMirror**: `ExtendedOpenAlgoAPI.strategy_legs()`/`set_trade_strategy()`,
+  `compute_combined_strategy_legs()` (merges legs by
+  strategy+symbol+exchange+product across accounts, weighted-average cost
+  - same merge shape as the existing Scrip-wise merge, keyed by strategy
+  too), a new "Strategy Positions" section on the P&L History page, and a
+  Strategy filter + manual-tag column on Trade Book.
+- Verified: a real unit test (`tests/test_pnl_history_combined.py`)
+  confirms two synthetic accounts' `DonchianSwing`/`INFY` legs merge into
+  one row with correctly weighted-averaged cost - the exact case originally
+  discussed (a position split across accounts).
+
+**Known real data-quality gotcha, found while verifying against a real
+account**: `strategy_positions` already has a `'Holdings'` strategy value
+(from OpenAlgo's own Holdings page hardcoding `strategy="Holdings"` on any
+manual Add/Exit click - `frontend/src/pages/Holdings.tsx:1011`) and a
+live-diverging `DonchianSwing`/`CREDITACC` quantity (a manual top-up
+placed outside OpenAlgo's own order flow, so the strategy book has no
+record of it). Neither is a bug - both are exactly the class of gap the
+"holdings-from-tradebook, reconciliation not replacement" framing below
+was designed for.
+
+**Holdings-from-tradebook, still not built**: the P&L ledger's FIFO
+matcher already computes `open_positions` (symbol/qty/avg price) as a
+byproduct - a from-scratch Holdings view derived purely from trade history
+is already half-built, just not surfaced. Still deliberately not done:
+don't replace the broker's Holdings API with it outright, since a position
+changed via a route OpenAlgo never saw (broker corporate action, or an
+order placed directly in the broker's own app) would silently drift if the
+ledger were trusted as sole source of truth. The right framing, per the
+same 2026-09-07 discussion: show both, flag a mismatch as a reconciliation
+check instead of picking one - now that `PnlTrade.strategy` and
+`strategy-legs` both exist, that reconciled view would get strategy
+attribution for free too. Not scoped or started.

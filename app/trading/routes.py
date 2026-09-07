@@ -10,7 +10,7 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
-from app.utils.pnl_history_combined import compute_combined_pnl_history
+from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 from app.utils.tradebook_combined import compute_combined_tradebook
 from datetime import datetime
 import json
@@ -462,9 +462,10 @@ def pnl_history_combined():
         return jsonify({'status': 'error', 'message': 'start_date and end_date are required'}), 400
     symbol = request.args.get('symbol') or None
     segment = request.args.get('segment') or None
+    strategy = request.args.get('strategy') or None
 
     try:
-        data = compute_combined_pnl_history(accounts, start_date, end_date, symbol, segment)
+        data = compute_combined_pnl_history(accounts, start_date, end_date, symbol, segment, strategy)
     except Exception as e:
         current_app.logger.exception(f'Error computing combined P&L history: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L history'}), 500
@@ -501,6 +502,63 @@ def pnl_history_import():
     except Exception as e:
         current_app.logger.exception(f'Error importing P&L CSV for account {account_id}: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to import CSV'}), 500
+
+    status_code = 200 if result.get('status') == 'success' else 400
+    return jsonify(result), status_code
+
+
+@trading_bp.route('/api/strategy-legs-combined')
+@login_required
+@limiter.limit("20 per minute")
+def strategy_legs_combined():
+    """Every currently-tracked strategy leg, merged across every selected
+    account (app/utils/pnl_history_combined.py::compute_combined_strategy_legs)
+    - "holdings, per strategy", already computed server-side by each
+    account's own strategy book, not derived from pnl_history/the FIFO
+    ledger at all. Not date-ranged, unlike pnl-history-combined above."""
+    accounts = get_selected_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
+
+    strategy = request.args.get('strategy') or None
+
+    try:
+        data = compute_combined_strategy_legs(accounts, strategy)
+    except Exception as e:
+        current_app.logger.exception(f'Error computing combined strategy legs: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to compute strategy legs'}), 500
+
+    return jsonify({'status': 'success', 'data': data})
+
+
+@trading_bp.route('/api/set-trade-strategy', methods=['PATCH'])
+@login_required
+@limiter.limit("20 per minute")
+def set_trade_strategy():
+    """Manual strategy-tag fallback for one historical trade row - proxies
+    to one account's own PATCH /api/v1/pnl/trades/<id>/strategy. Like CSV
+    import, this is inherently single-account: a trade row's id only means
+    something within the one account's own tradebook.db."""
+    payload = request.get_json(silent=True) or {}
+    account_id = payload.get('account_id')
+    trade_id = payload.get('trade_id')
+    strategy = (payload.get('strategy') or '').strip()
+
+    if not account_id or not trade_id or not strategy:
+        return jsonify({'status': 'error', 'message': 'account_id, trade_id and strategy are required'}), 400
+
+    account = TradingAccount.query.filter_by(
+        id=account_id, user_id=current_user.id, is_active=True
+    ).first()
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        result = client.set_trade_strategy(trade_id, strategy)
+    except Exception as e:
+        current_app.logger.exception(f'Error setting strategy tag for account {account_id}: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to save strategy tag'}), 500
 
     status_code = 200 if result.get('status') == 'success' else 400
     return jsonify(result), status_code

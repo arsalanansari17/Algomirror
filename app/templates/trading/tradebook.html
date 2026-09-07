@@ -76,6 +76,12 @@
                     <input type="text" id="tbSymbol" placeholder="e.g. INFY" class="input input-bordered input-sm">
                 </div>
                 <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Strategy</span></label>
+                    <select id="tbStrategy" class="select select-bordered select-sm">
+                        <option value="">All</option>
+                    </select>
+                </div>
+                <div class="form-control flex-1">
                     <label class="label"><span class="label-text">Start date</span></label>
                     <input type="date" id="tbStartDate" class="input input-bordered input-sm">
                 </div>
@@ -170,6 +176,7 @@
                             <th>Avg Price</th>
                             <th>Trade Value</th>
                             <th>Order ID</th>
+                            <th>Strategy</th>
                         </tr>
                     </thead>
                     <tbody id="tbTableBody">
@@ -200,6 +207,11 @@
                             <td class="font-mono" data-pv="avgprice">₹{{ "%.2f"|format(trade.average_price|float) if trade.average_price else "0.00" }}</td>
                             <td class="font-mono" data-pv="value">₹{{ "%.2f"|format(trade.trade_value|float) if trade.trade_value else "0.00" }}</td>
                             <td class="font-mono text-xs">{{ trade.orderid }}</td>
+                            <!-- Live-today trades have no way to carry a strategy tag
+                                 (see calendar_heatmap.js-adjacent JS comments below) -
+                                 the manual-tag fallback only applies to historical
+                                 (Fetch-loaded) rows, rendered by tbRenderTable in JS. -->
+                            <td class="text-xs text-muted-foreground">-</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -287,11 +299,34 @@ function tbSelectedAccountIds() {
 function tbApplyFilters(trades) {
     const segment = document.getElementById('tbSegment').value;
     const symbol = document.getElementById('tbSymbol').value.trim().toUpperCase();
+    const strategy = document.getElementById('tbStrategy').value;
     return trades.filter(t => {
         if (segment && tbSegmentOf(t) !== segment) return false;
+        // Strategy only ever exists on historical rows (same reasoning as
+        // OpenAlgo's own TradeBook.tsx) - a live row simply never matches
+        // once a specific strategy is picked, which is correct.
+        if (strategy && t.strategy !== strategy) return false;
         if (symbol && !(t.symbol || '').toUpperCase().includes(symbol)) return false;
         return true;
     });
+}
+
+// Populates the Strategy filter's options from this account selection's
+// own strategy book - same pattern as pnl_history.html.
+async function loadTbStrategyOptions() {
+    const selectEl = document.getElementById('tbStrategy');
+    const params = new URLSearchParams();
+    tbSelectedAccountIds().forEach(id => params.append('account', id));
+    try {
+        const response = await fetch(`{{ url_for('trading.strategy_legs_combined') }}?${params.toString()}`);
+        const result = await response.json();
+        if (result.status !== 'success') return;
+        const names = Array.from(new Set((result.data.legs || []).map(leg => leg.strategy))).sort();
+        selectEl.innerHTML = '<option value="">All</option>' +
+            names.map(name => `<option value="${name}">${name}</option>`).join('');
+    } catch (e) {
+        // Best-effort - see the identical comment in pnl_history.html.
+    }
 }
 
 function tbRenderHeatmap(trades) {
@@ -318,7 +353,90 @@ function tbFormatRupee(value) {
     return `₹${Number(value || 0).toFixed(2)}`;
 }
 
+// Manual strategy-tag fallback state (fork-only - proxies to OpenAlgo's
+// own PATCH /api/v1/pnl/trades/<id>/strategy). Keyed by "accountId:tradeId"
+// since a trade id is only unique within one account's own tradebook.db,
+// same reasoning as the CSV import proxy needing an explicit account_id.
+let tbEditingKey = null;
+let tbLastRenderedTrades = [];
+
+function tbEditKey(trade) {
+    return `${trade.account_id}:${trade.id}`;
+}
+
+function tbStartEditTag(accountId, tradeId) {
+    tbEditingKey = `${accountId}:${tradeId}`;
+    tbRenderTable(tbLastRenderedTrades);
+    const input = document.querySelector(`[data-tag-input="${tbEditingKey}"]`);
+    if (input) input.focus();
+}
+
+function tbCancelEditTag() {
+    tbEditingKey = null;
+    tbRenderTable(tbLastRenderedTrades);
+}
+
+async function tbSaveTag(accountId, tradeId) {
+    const input = document.querySelector(`[data-tag-input="${accountId}:${tradeId}"]`);
+    const value = (input ? input.value : '').trim();
+    const errorEl = document.getElementById('tbFetchError');
+    errorEl.classList.add('hidden');
+    if (!value) {
+        errorEl.textContent = 'Strategy cannot be empty';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const response = await fetch('{{ url_for("trading.set_trade_strategy") }}', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: accountId, trade_id: tradeId, strategy: value }),
+        });
+        const result = await response.json();
+        if (result.status !== 'success') {
+            errorEl.textContent = result.message || 'Failed to save strategy tag';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        const applyTag = t => (t.account_id === accountId && t.id === tradeId) ? { ...t, strategy: result.data.strategy } : t;
+        tbLastRenderedTrades = tbLastRenderedTrades.map(applyTag);
+        tbLastTrades = tbLastTrades.map(applyTag);
+        tbEditingKey = null;
+        tbRenderTable(tbLastRenderedTrades);
+    } catch (e) {
+        errorEl.textContent = 'Failed to save strategy tag';
+        errorEl.classList.remove('hidden');
+    }
+}
+
+// Manual strategy-tag fallback cell (fork-only) - only meaningful for
+// historical rows, which is all tbRenderTable ever renders (the live,
+// server-rendered Jinja rows above always show a plain "-" instead, since
+// they have no `id`/`account_id` pair to address).
+function tbRenderStrategyCell(trade) {
+    if (trade.id === undefined || trade.id === null) return '-';
+    const key = tbEditKey(trade);
+    if (tbEditingKey === key) {
+        return `
+            <div class="flex items-center gap-1">
+                <input data-tag-input="${key}" value="${trade.strategy || ''}" placeholder="Strategy name"
+                       class="input input-bordered input-xs w-28"
+                       onkeydown="if(event.key==='Enter')tbSaveTag(${trade.account_id},${trade.id});if(event.key==='Escape')tbCancelEditTag();">
+                <button type="button" class="btn btn-ghost btn-xs" onclick="tbSaveTag(${trade.account_id},${trade.id})">✓</button>
+                <button type="button" class="btn btn-ghost btn-xs" onclick="tbCancelEditTag()">✕</button>
+            </div>
+        `;
+    }
+    return `
+        <button type="button" class="text-xs hover:underline"
+                onclick="tbStartEditTag(${trade.account_id},${trade.id})">
+            ${trade.strategy || '<span class="text-muted-foreground">+ Tag</span>'}
+        </button>
+    `;
+}
+
 function tbRenderTable(trades) {
+    tbLastRenderedTrades = trades;
     // The "No Trades" empty state (tradebook.html's other Jinja branch)
     // doesn't render the stats cards or table at all - a Fetch that lands
     // on that branch's page (today's live view had zero trades) has
@@ -349,7 +467,7 @@ function tbRenderTable(trades) {
     netPnlEl.classList.toggle('text-red-600', netPnl < 0);
 
     if (trades.length === 0) {
-        body.innerHTML = `<tr><td colspan="${showAccountCol ? 9 : 8}" class="text-center text-muted-foreground py-8">No trades match these filters</td></tr>`;
+        body.innerHTML = `<tr><td colspan="${showAccountCol ? 10 : 9}" class="text-center text-muted-foreground py-8">No trades match these filters</td></tr>`;
         return;
     }
     body.innerHTML = trades.map(t => `
@@ -364,6 +482,7 @@ function tbRenderTable(trades) {
             <td class="font-mono">${tbFormatRupee(t.average_price)}</td>
             <td class="font-mono">${tbFormatRupee(t.trade_value)}</td>
             <td class="font-mono text-xs">${t.orderid || ''}</td>
+            <td>${tbRenderStrategyCell(t)}</td>
         </tr>
     `).join('');
 }
@@ -415,6 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tbStartDate').value = tbTodayStr();
     document.getElementById('tbEndDate').value = tbTodayStr();
     tbRenderHeatmap(tbLastTrades);
+    loadTbStrategyOptions();
 });
 
 function exportToCSV(type) {

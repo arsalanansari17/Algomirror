@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.utils.pnl_history_combined import compute_combined_pnl_history
+from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 
 
 class FakeAccount:
@@ -61,11 +61,41 @@ ACCOUNT_2_DATA = {
 }
 
 
-def fake_pnl_history(self, start_date, end_date, symbol=None, segment=None):
+def fake_pnl_history(self, start_date, end_date, symbol=None, segment=None, strategy=None):
     if self.api_key == 'fake-key-1':
         return {'status': 'success', 'data': ACCOUNT_1_DATA}
     if self.api_key == 'fake-key-2':
         return {'status': 'success', 'data': ACCOUNT_2_DATA}
+    return {'status': 'error', 'message': 'Simulated broker failure'}
+
+
+ACCOUNT_1_LEGS = [
+    {
+        'strategy': 'DonchianSwing', 'symbol': 'INFY', 'exchange': 'NSE', 'product': 'CNC',
+        'quantity': 10, 'average_price': 1500.0, 'realized_pnl': 200.0, 'today_realized_pnl': 0.0,
+        'updated_at': '2026-09-01T10:00:00',
+    },
+    {
+        'strategy': 'IronCondor', 'symbol': 'NIFTY24500CE', 'exchange': 'NFO', 'product': 'MIS',
+        'quantity': 0, 'average_price': 0.0, 'realized_pnl': -500.0, 'today_realized_pnl': -500.0,
+        'updated_at': '2026-09-01T15:20:00',
+    },
+]
+
+ACCOUNT_2_LEGS = [
+    {
+        'strategy': 'DonchianSwing', 'symbol': 'INFY', 'exchange': 'NSE', 'product': 'CNC',
+        'quantity': 5, 'average_price': 1600.0, 'realized_pnl': 100.0, 'today_realized_pnl': 0.0,
+        'updated_at': '2026-09-01T10:05:00',
+    },
+]
+
+
+def fake_strategy_legs(self, strategy=None):
+    if self.api_key == 'fake-key-1':
+        return {'status': 'success', 'data': ACCOUNT_1_LEGS}
+    if self.api_key == 'fake-key-2':
+        return {'status': 'success', 'data': ACCOUNT_2_LEGS}
     return {'status': 'error', 'message': 'Simulated broker failure'}
 
 
@@ -124,8 +154,45 @@ def test_no_accounts():
     print('PASS: test_no_accounts')
 
 
+def test_strategy_legs_merge_two_accounts():
+    accounts = [FakeAccount(1, 'acc1'), FakeAccount(2, 'acc2')]
+    with patch('app.utils.openalgo_client.ExtendedOpenAlgoAPI.strategy_legs', fake_strategy_legs):
+        result = compute_combined_strategy_legs(accounts)
+
+    print('legs:', result['legs'])
+    assert len(result['legs']) == 2, 'DonchianSwing/INFY merges across accounts; IronCondor stays separate'
+
+    donchian = next(leg for leg in result['legs'] if leg['strategy'] == 'DonchianSwing')
+    assert donchian['symbol'] == 'INFY'
+    assert donchian['quantity'] == 15, '10 (acc1) + 5 (acc2)'
+    # Weighted average: (10*1500 + 5*1600) / 15
+    assert abs(donchian['average_price'] - 1533.33) < 0.01
+    assert donchian['realized_pnl'] == 300.0, '200 (acc1) + 100 (acc2)'
+    assert set(donchian['account_ids']) == {1, 2}
+
+    iron_condor = next(leg for leg in result['legs'] if leg['strategy'] == 'IronCondor')
+    assert iron_condor['quantity'] == 0
+    assert iron_condor['realized_pnl'] == -500.0
+    assert iron_condor['account_ids'] == [1]
+
+    assert result['failed_accounts'] == []
+    print('PASS: test_strategy_legs_merge_two_accounts')
+
+
+def test_strategy_legs_one_account_fails_isolated():
+    accounts = [FakeAccount(1, 'acc1'), FakeAccount(3, 'acc3-broken')]
+    with patch('app.utils.openalgo_client.ExtendedOpenAlgoAPI.strategy_legs', fake_strategy_legs):
+        result = compute_combined_strategy_legs(accounts)
+
+    assert len(result['legs']) == 2, 'only acc1 contributes; acc3 failed'
+    assert result['failed_accounts'] == ['acc3-broken']
+    print('PASS: test_strategy_legs_one_account_fails_isolated')
+
+
 if __name__ == '__main__':
     test_merge_two_accounts()
     test_one_account_fails_isolated()
     test_no_accounts()
+    test_strategy_legs_merge_two_accounts()
+    test_strategy_legs_one_account_fails_isolated()
     print('\nAll pnl_history_combined tests passed.')

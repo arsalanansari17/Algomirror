@@ -1,15 +1,22 @@
 {#
 Top navbar - structurally matches OpenAlgo's Navbar.tsx: a sticky, blurred
-top bar with a flat icon+label row (no dropdown grouping) instead of the
-old "Trading ▾ / Margin ▾" menus, plus a profile dropdown for secondary
-pages. See project_algomirror_ui_redesign_plan.md for why.
+top bar with a flat icon+label row for most pages, plus one "Reports"
+dropdown group (Tradebook + P&L) mirroring OpenAlgo's own Reports menu -
+AlgoMirror adopts OpenAlgo's UI specifically to look near-identical, so
+this one group is a deliberate exception to the otherwise-flat nav
+(see project_algomirror_ui_redesign_plan.md for the original flat-nav
+redesign this still otherwise follows). A profile dropdown covers
+secondary pages.
 #}
 {% from 'macros/icons.html' import dashboard, orderbook, tradebook, positions, holdings, funds, pnl, accounts, strategy, margin, settings, user, clock, shield, logout, sun, moon, menu, close %}
 
 {% set nav_items = [
     {'endpoint': 'main.dashboard', 'label': 'Dashboard', 'icon': dashboard},
     {'endpoint': 'trading.orderbook', 'label': 'Orderbook', 'icon': orderbook},
-    {'endpoint': 'trading.tradebook', 'label': 'Tradebook', 'icon': tradebook},
+    {'label': 'Reports', 'icon': tradebook, 'children': [
+        {'endpoint': 'trading.tradebook', 'label': 'Tradebook', 'icon': tradebook},
+        {'endpoint': 'trading.pnl_history_page', 'label': 'P&L', 'icon': pnl},
+    ]},
     {'endpoint': 'trading.positions', 'label': 'Positions', 'icon': positions},
     {'endpoint': 'trading.holdings', 'label': 'Holdings', 'icon': holdings},
     {'endpoint': 'trading.funds', 'label': 'Funds', 'icon': funds},
@@ -19,7 +26,6 @@ pages. See project_algomirror_ui_redesign_plan.md for why.
 
 {% set profile_items = [
     {'endpoint': 'auth.change_password', 'label': 'Profile Settings', 'icon': user},
-    {'endpoint': 'trading.pnl_history_page', 'label': 'P&L History', 'icon': pnl},
     {'endpoint': 'margin.dashboard', 'label': 'Margin', 'icon': margin},
 ] + ([{'endpoint': 'strategy.create_new_strategy', 'label': 'Strategy', 'icon': strategy}] if strategy_engine_enabled else []) + [
     {'endpoint': 'settings.index', 'label': 'Trading Settings', 'icon': settings},
@@ -47,12 +53,29 @@ pages. See project_algomirror_ui_redesign_plan.md for why.
              OpenAlgo's own navbar (its issue #1384). -->
         <div class="hidden md:flex items-center gap-1 overflow-x-auto">
             {% for item in nav_items %}
+            {% if item.children is defined %}
+            {% set group_active = item.children | selectattr('endpoint', 'equalto', request.endpoint) | list | length > 0 %}
+            <div class="dropdown">
+                <div tabindex="0" role="button" title="{{ item.label }}"
+                     class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap cursor-pointer {{ 'bg-primary text-primary-content' if group_active else 'text-base-content/70 hover:bg-base-200 hover:text-base-content' }}">
+                    {{ item.icon('h-4 w-4 shrink-0') }}
+                    <span class="hidden xl:inline">{{ item.label }}</span>
+                </div>
+                <ul tabindex="0" class="dropdown-content z-50 menu p-2 shadow-lg bg-base-100 border border-base-300 rounded-box w-44 mt-1">
+                    {% for child in item.children %}
+                    {% set child_active = request.endpoint == child.endpoint %}
+                    <li><a href="{{ url_for(child.endpoint) }}" class="flex items-center gap-2 {{ 'active' if child_active else '' }}">{{ child.icon('h-4 w-4') }} {{ child.label }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
             {% set active = request.endpoint == item.endpoint %}
             <a href="{{ url_for(item.endpoint) }}" title="{{ item.label }}"
                class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap {{ 'bg-primary text-primary-content' if active else 'text-base-content/70 hover:bg-base-200 hover:text-base-content' }}">
                 {{ item.icon('h-4 w-4 shrink-0') }}
                 <span class="hidden xl:inline">{{ item.label }}</span>
             </a>
+            {% endif %}
             {% endfor %}
         </div>
 
@@ -103,10 +126,19 @@ pages. See project_algomirror_ui_redesign_plan.md for why.
         <nav class="flex flex-col gap-1 px-2">
             <div class="px-3 py-2 text-xs font-medium text-base-content/50 uppercase tracking-wider">Navigation</div>
             {% for item in nav_items %}
+            {% if item.children is defined %}
+            {% for child in item.children %}
+            {% set active = request.endpoint == child.endpoint %}
+            <a href="{{ url_for(child.endpoint) }}" class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors {{ 'bg-primary text-primary-content' if active else 'hover:bg-base-200' }}">
+                {{ child.icon('h-4 w-4') }} {{ child.label }}
+            </a>
+            {% endfor %}
+            {% else %}
             {% set active = request.endpoint == item.endpoint %}
             <a href="{{ url_for(item.endpoint) }}" class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors {{ 'bg-primary text-primary-content' if active else 'hover:bg-base-200' }}">
                 {{ item.icon('h-4 w-4') }} {{ item.label }}
             </a>
+            {% endif %}
             {% endfor %}
         </nav>
         <nav class="flex flex-col gap-1 px-2 border-t border-base-300 pt-4">

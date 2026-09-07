@@ -76,7 +76,7 @@ class ExtendedOpenAlgoAPI(api):
         except Exception as e:
             return self._request_error(e)
 
-    def pnl_history(self, start_date, end_date, symbol=None, segment=None):
+    def pnl_history(self, start_date, end_date, symbol=None, segment=None, strategy=None):
         """Realized P&L for a date range - fork-only endpoint, see
         openalgo's restx_api/pnl_history.py. AlgoMirror's combined P&L
         History page calls this once per account and merges the results
@@ -87,9 +87,11 @@ class ExtendedOpenAlgoAPI(api):
             params["symbol"] = symbol
         if segment:
             params["segment"] = segment
+        if strategy:
+            params["strategy"] = strategy
         return self._get_request("pnl/history", params)
 
-    def pnl_trades(self, start_date, end_date, symbol=None, segment=None):
+    def pnl_trades(self, start_date, end_date, symbol=None, segment=None, strategy=None):
         """Raw fills for a date range, no FIFO matching - fork-only
         endpoint. Backs Trade Book's historical mode once the date range
         moves off today (mirrors OpenAlgo's own isHistorical switch).
@@ -99,7 +101,40 @@ class ExtendedOpenAlgoAPI(api):
             params["symbol"] = symbol
         if segment:
             params["segment"] = segment
+        if strategy:
+            params["strategy"] = strategy
         return self._get_request("pnl/trades", params)
+
+    def strategy_legs(self, strategy=None):
+        """Every currently-tracked strategy leg for this account - a thin
+        read over openalgo's already-running strategy book
+        (database/strategy_book_db.py), exposed via the fork-only
+        GET /api/v1/pnl/strategy-legs. "Holdings, per strategy" - not
+        date-ranged like pnl_history/pnl_trades, since this tracks current
+        open legs, not historical trades.
+        """
+        params = {"apikey": self.api_key}
+        if strategy:
+            params["strategy"] = strategy
+        return self._get_request("pnl/strategy-legs", params)
+
+    def set_trade_strategy(self, trade_id, strategy):
+        """Manual strategy-tag fallback for one historical trade row -
+        fork-only PATCH /api/v1/pnl/trades/<id>/strategy. For CSV-imported
+        history and any trade with no orderid to automatically join
+        against the strategy book.
+        """
+        url = self.base_url + f"pnl/trades/{trade_id}/strategy"
+        try:
+            response = httpx.patch(
+                url,
+                json={"apikey": self.api_key, "strategy": strategy},
+                headers=self.headers,
+                timeout=self.timeout,
+            )
+            return self._handle_response(response)
+        except Exception as e:
+            return self._request_error(e)
 
     def import_pnl_csv(self, file_bytes, filename):
         """Backfill one account's ledger from an exported tradebook CSV -

@@ -21,16 +21,28 @@ from app.utils.openalgo_client import ExtendedOpenAlgoAPI
 logger = logging.getLogger(__name__)
 
 
-def _fetch_one(account, start_date, end_date, symbol, segment):
+def _fetch_one(account, start_date, end_date, symbol, segment, strategy):
     try:
         client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
-        resp = client.pnl_history(start_date, end_date, symbol, segment)
+        resp = client.pnl_history(start_date, end_date, symbol, segment, strategy)
         if resp.get('status') != 'success':
             return account, None, resp.get('message', 'Unknown error')
         return account, resp.get('data'), None
     except Exception:
         logger.exception(f'Error fetching P&L history for account {account.id}')
         return account, None, 'Unexpected error fetching P&L history'
+
+
+def _fetch_one_strategy_legs(account, strategy):
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        resp = client.strategy_legs(strategy)
+        if resp.get('status') != 'success':
+            return account, None, resp.get('message', 'Unknown error')
+        return account, resp.get('data'), None
+    except Exception:
+        logger.exception(f'Error fetching strategy legs for account {account.id}')
+        return account, None, 'Unexpected error fetching strategy legs'
 
 
 def _merge_scrip_rows(closed_trades):
@@ -71,7 +83,7 @@ def _merge_scrip_rows(closed_trades):
     return sorted(rows.values(), key=lambda r: r['symbol'])
 
 
-def compute_combined_pnl_history(accounts, start_date, end_date, symbol=None, segment=None):
+def compute_combined_pnl_history(accounts, start_date, end_date, symbol=None, segment=None, strategy=None):
     """Fetch GET /api/v1/pnl/history from every account in parallel, merge
     into one combined report. A failed account contributes nothing to the
     totals but is named in per_account/failed_accounts rather than
@@ -82,12 +94,13 @@ def compute_combined_pnl_history(accounts, start_date, end_date, symbol=None, se
         return _empty_result()
 
     if len(accounts) == 1:
-        results = [_fetch_one(accounts[0], start_date, end_date, symbol, segment)]
+        results = [_fetch_one(accounts[0], start_date, end_date, symbol, segment, strategy)]
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(accounts))) as executor:
             results = list(
                 executor.map(
-                    lambda a: _fetch_one(a, start_date, end_date, symbol, segment), accounts
+                    lambda a: _fetch_one(a, start_date, end_date, symbol, segment, strategy),
+                    accounts,
                 )
             )
 
@@ -163,3 +176,82 @@ def _empty_result():
         'per_account': [],
         'failed_accounts': [],
     }
+
+
+def compute_combined_strategy_legs(accounts, strategy=None):
+    """Fetch GET /api/v1/pnl/strategy-legs from every account in parallel,
+    merge by (strategy, symbol, exchange, product) across accounts - same
+    merge key shape as _merge_scrip_rows above, keyed by strategy+symbol
+    instead of just symbol. This is "holdings, per strategy" already
+    computed by each account's own strategy book
+    (openalgo's database/strategy_book_db.py) - not derived from
+    pnl_history/the FIFO ledger at all.
+    """
+    if not accounts:
+        return {'legs': [], 'per_account': [], 'failed_accounts': []}
+
+    if len(accounts) == 1:
+        results = [_fetch_one_strategy_legs(accounts[0], strategy)]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(accounts))) as executor:
+            results = list(
+                executor.map(lambda a: _fetch_one_strategy_legs(a, strategy), accounts)
+            )
+
+    per_account = []
+    failed_accounts = []
+    merged = {}
+
+    for account, legs, error in results:
+        per_account.append({
+            'account_id': account.id,
+            'account_name': account.account_name,
+            'leg_count': len(legs) if legs else 0,
+            'error': error,
+        })
+        if error:
+            failed_accounts.append(account.account_name)
+            continue
+
+        for leg in legs:
+            key = (leg['strategy'], leg['symbol'], leg['exchange'], leg['product'])
+            row = merged.get(key)
+            if row is None:
+                merged[key] = {
+                    'strategy': leg['strategy'],
+                    'symbol': leg['symbol'],
+                    'exchange': leg['exchange'],
+                    'product': leg['product'],
+                    'quantity': leg['quantity'],
+                    # Weighted-average cost across accounts - matches how
+                    # each account's own strategy book averages a position
+                    # flipping through partial fills.
+                    'notional': leg['quantity'] * leg['average_price'],
+                    'realized_pnl': leg['realized_pnl'],
+                    'today_realized_pnl': leg['today_realized_pnl'],
+                    'account_ids': [account.id],
+                }
+            else:
+                row['quantity'] += leg['quantity']
+                row['notional'] += leg['quantity'] * leg['average_price']
+                row['realized_pnl'] += leg['realized_pnl']
+                row['today_realized_pnl'] += leg['today_realized_pnl']
+                row['account_ids'].append(account.id)
+
+    legs_out = []
+    for row in merged.values():
+        average_price = (row['notional'] / row['quantity']) if row['quantity'] else 0.0
+        legs_out.append({
+            'strategy': row['strategy'],
+            'symbol': row['symbol'],
+            'exchange': row['exchange'],
+            'product': row['product'],
+            'quantity': row['quantity'],
+            'average_price': round(average_price, 2),
+            'realized_pnl': round(row['realized_pnl'], 2),
+            'today_realized_pnl': round(row['today_realized_pnl'], 2),
+            'account_ids': row['account_ids'],
+        })
+    legs_out.sort(key=lambda leg: (leg['strategy'], leg['symbol']))
+
+    return {'legs': legs_out, 'per_account': per_account, 'failed_accounts': failed_accounts}

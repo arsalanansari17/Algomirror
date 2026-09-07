@@ -35,8 +35,35 @@
     </div>
     {% else %}
 
-    <!-- Filters: Segment, Symbol, Date range, Fetch - same order as
-         OpenAlgo's own PnlHistory.tsx filter row. -->
+    <!-- Strategy Positions - not date-ranged like everything below. Reads
+         straight from each selected account's already-running strategy
+         book (openalgo's database/strategy_book_db.py), merged across
+         accounts (app/utils/pnl_history_combined.py::compute_combined_strategy_legs)
+         - "holdings, per strategy", already computed server-side, not
+         derived from this page's own ledger/FIFO matching at all. -->
+    <div id="strategyLegsCard" class="{{ card() }} hidden">
+        <div class="{{ card_content('pt-6') }}">
+            <h3 class="font-semibold mb-1">Strategy Positions</h3>
+            <p class="text-sm text-muted-foreground mb-3">Current open legs and cumulative realized P&amp;L per strategy, merged across selected accounts</p>
+            <div id="strategyLegsFailedWarning" class="hidden alert alert-warning mb-3"></div>
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Strategy</th><th>Symbol</th><th>Exchange</th><th>Product</th>
+                            <th class="text-right">Qty</th><th class="text-right">Avg Price</th>
+                            <th class="text-right">Realized P&amp;L</th><th>Accounts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strategyLegsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters: Segment, Symbol, Strategy, Date range, Fetch - same order
+         as OpenAlgo's own PnlHistory.tsx filter row, Strategy appended
+         since it isn't part of that reference. -->
     <div class="{{ card() }}">
         <div class="{{ card_content('pt-6') }}">
             <div class="flex flex-col sm:flex-row sm:items-end gap-4">
@@ -54,6 +81,12 @@
                 <div class="form-control flex-1">
                     <label class="label"><span class="label-text">Symbol</span></label>
                     <input type="text" id="pnlHistorySymbol" placeholder="e.g. INFY" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Strategy</span></label>
+                    <select id="pnlHistoryStrategy" class="select select-bordered select-sm" onchange="onPnlHistoryStrategyFilterChange()">
+                        <option value="">All</option>
+                    </select>
                 </div>
                 <div class="form-control flex-1">
                     <label class="label"><span class="label-text">Start date</span></label>
@@ -214,6 +247,72 @@ function pnlHistorySelectedAccountIds() {
 // this re-fetches in place instead.
 function onPnlHistoryAccountFilterChange() {
     if (lastPnlHistoryData) loadPnlHistory();
+    loadStrategyLegs();
+}
+
+function onPnlHistoryStrategyFilterChange() {
+    loadStrategyLegs();
+    if (lastPnlHistoryData) loadPnlHistory();
+}
+
+// Strategy Positions - not date-ranged, so this is independent of
+// loadPnlHistory()'s own fetch cycle. Also populates the Strategy
+// filter's <select> options from whatever strategies actually exist
+// across the selected accounts.
+async function loadStrategyLegs() {
+    const cardEl = document.getElementById('strategyLegsCard');
+    const bodyEl = document.getElementById('strategyLegsBody');
+    const failedEl = document.getElementById('strategyLegsFailedWarning');
+    const selectEl = document.getElementById('pnlHistoryStrategy');
+    const currentValue = selectEl.value;
+
+    const params = new URLSearchParams();
+    if (currentValue) params.set('strategy', currentValue);
+    pnlHistorySelectedAccountIds().forEach(id => params.append('account', id));
+
+    try {
+        const response = await fetch(`{{ url_for('trading.strategy_legs_combined') }}?${params.toString()}`);
+        const result = await response.json();
+        if (result.status !== 'success') return;
+
+        const data = result.data;
+        const legs = data.legs || [];
+
+        // Rebuild the Strategy filter's options from every strategy the
+        // *unfiltered* fetch would show - only refreshed on the initial
+        // (no-strategy-selected) load, so picking a strategy doesn't
+        // collapse the dropdown down to just that one option afterward.
+        if (!currentValue) {
+            const names = Array.from(new Set(legs.map(leg => leg.strategy))).sort();
+            selectEl.innerHTML = '<option value="">All</option>' +
+                names.map(name => `<option value="${name}">${name}</option>`).join('');
+        }
+
+        cardEl.classList.toggle('hidden', legs.length === 0);
+        bodyEl.innerHTML = legs.map(leg => `
+            <tr>
+                <td>${leg.strategy}</td>
+                <td>${leg.symbol}</td>
+                <td>${leg.exchange}</td>
+                <td>${leg.product}</td>
+                <td class="text-right">${leg.quantity}</td>
+                <td class="text-right">${formatRupee(leg.average_price)}</td>
+                <td class="text-right font-medium" style="color:${leg.realized_pnl >= 0 ? '#22c55e' : '#ef4444'}">${formatRupee(leg.realized_pnl)}</td>
+                <td class="text-xs text-muted-foreground">${(leg.account_ids || []).length}</td>
+            </tr>
+        `).join('');
+
+        const failedAccounts = data.failed_accounts || [];
+        if (failedAccounts.length > 0) {
+            failedEl.textContent = `Could not fetch strategy data for: ${failedAccounts.join(', ')}.`;
+            failedEl.classList.remove('hidden');
+        } else {
+            failedEl.classList.add('hidden');
+        }
+    } catch (e) {
+        // Best-effort - a failed strategy-legs fetch shouldn't block the
+        // rest of the page.
+    }
 }
 
 function setPnlHistoryView(view) {
@@ -248,8 +347,10 @@ async function loadPnlHistory() {
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
     const segment = document.getElementById('pnlHistorySegment').value;
     const symbol = document.getElementById('pnlHistorySymbol').value.trim();
+    const strategy = document.getElementById('pnlHistoryStrategy').value;
     if (segment) params.set('segment', segment);
     if (symbol) params.set('symbol', symbol.toUpperCase());
+    if (strategy) params.set('strategy', strategy);
     pnlHistorySelectedAccountIds().forEach(id => params.append('account', id));
 
     try {
@@ -364,6 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pnlHistoryStartDate').value = pnlHistorySevenDaysAgoStr();
     document.getElementById('pnlHistoryEndDate').value = pnlHistoryTodayStr();
     loadPnlHistory();
+    loadStrategyLegs();
     {% endif %}
 });
 </script>
