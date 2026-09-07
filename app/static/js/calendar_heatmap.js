@@ -8,16 +8,19 @@
  * and `colorFor` function; the grid layout itself is identical.
  */
 
-function calendarHeatmapEnumerateMonths(startDate, endDate) {
-    var sParts = startDate.split('-').map(Number);
+// Always the trailing 12 months ending at endDate's month - matches
+// Zerodha Console's own heat map, which shows a full year of calendar
+// frame regardless of how narrow the actual searched/filtered range is.
+// startDate plays no part in the frame itself; renderCalendarHeatmapMonth's
+// own inRange check is what keeps days outside the real fetched range
+// blank within that wider 12-month frame.
+function calendarHeatmapEnumerateMonths(endDate) {
     var eParts = endDate.split('-').map(Number);
-    var months = [];
-    var y = sParts[0], m = sParts[1] - 1;
     var endIdx = eParts[0] * 12 + (eParts[1] - 1);
-    while (y * 12 + m <= endIdx) {
-        months.push({ year: y, month: m });
-        m += 1;
-        if (m > 11) { m = 0; y += 1; }
+    var startIdx = endIdx - 11;
+    var months = [];
+    for (var idx = startIdx; idx <= endIdx; idx++) {
+        months.push({ year: Math.floor(idx / 12), month: ((idx % 12) + 12) % 12 });
     }
     return months;
 }
@@ -84,7 +87,7 @@ function renderCalendarHeatmap(containerId, days, startDate, endDate, colorFor) 
         maxAbs = Math.max(maxAbs, Math.abs(d.value));
     });
 
-    var months = calendarHeatmapEnumerateMonths(startDate, endDate);
+    var months = calendarHeatmapEnumerateMonths(endDate);
     var html = '<div class="flex flex-wrap gap-6">';
     months.forEach(function (m) {
         html += renderCalendarHeatmapMonth(m.year, m.month, dayMap, maxAbs, startDate, endDate, colorFor);
