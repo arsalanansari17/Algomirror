@@ -68,10 +68,19 @@ class ExtendedOpenAlgoAPI(api):
         query params validated via request.args, not a JSON body - apikey
         has to be one of those params here, not sent the way every other
         SDK call sends it.
+
+        Deliberately does NOT send self.headers (Content-Type: application/json) -
+        a bodyless GET with that header gets rejected with a raw 400 by the
+        production edge in front of acc1.skyshieldedge.com (confirmed: the
+        same request succeeds via curl with no Content-Type header, and
+        fails via httpx only when that header is added). Every real account
+        was silently failing to fetch P&L History/strategy legs because of
+        this - found 2026-09-07 while verifying the strategy attribution
+        deploy end-to-end.
         """
         url = self.base_url + endpoint
         try:
-            response = httpx.get(url, params=params, headers=self.headers, timeout=self.timeout)
+            response = httpx.get(url, params=params, timeout=self.timeout)
             return self._handle_response(response)
         except Exception as e:
             return self._request_error(e)
