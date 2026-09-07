@@ -250,7 +250,7 @@
     {% endif %}
 </div>
 
-<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
 <script>
 // Auto-refresh disabled - use manual refresh button instead
 

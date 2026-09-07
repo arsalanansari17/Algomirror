@@ -213,7 +213,7 @@
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
 
-<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
 <script>
 let lastPnlHistoryData = null;
 let pnlHistoryView = 'day';
