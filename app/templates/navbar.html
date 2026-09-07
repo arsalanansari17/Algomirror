@@ -50,8 +50,13 @@ secondary pages.
 
         <!-- Desktop nav: icon-only between md-xl so everything fits narrower
              screens, full label from xl up - same breakpoint strategy as
-             OpenAlgo's own navbar (its issue #1384). -->
-        <div class="hidden md:flex items-center gap-1 overflow-x-auto">
+             OpenAlgo's own navbar (its issue #1384), which also has no
+             overflow-x-auto on this row - removed here too: an item with
+             overflow-x set to anything but visible forces overflow-y to
+             clip as well (CSS spec), which clipped the Reports dropdown's
+             popover and showed scrollbar arrows instead of it floating
+             cleanly, the way the profile dropdown (outside this row) does. -->
+        <div class="hidden md:flex items-center gap-1">
             {% for item in nav_items %}
             {% if item.children is defined %}
             {% set group_active = item.children | selectattr('endpoint', 'equalto', request.endpoint) | list | length > 0 %}
