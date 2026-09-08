@@ -50,27 +50,13 @@ function dateRangePresetCurrentFYStartYear(base) {
 
 var DATE_RANGE_PRESETS = [
     {
-        key: 'current_week', label: 'Current Week', range: function () {
+        key: 'prev_fy', label: 'Prev. FY', range: function () {
             var today = new Date();
-            return { start: dateRangePresetToDateStr(dateRangePresetStartOfWeekMonday(today)), end: dateRangePresetToDateStr(today) };
-        }
-    },
-    {
-        key: 'current_month', label: 'Current Month', range: function () {
-            var today = new Date();
-            return { start: dateRangePresetToDateStr(dateRangePresetStartOfMonth(today)), end: dateRangePresetToDateStr(today) };
-        }
-    },
-    {
-        key: 'last_7_days', label: 'Last 7 Days', range: function () {
-            var today = new Date();
-            return { start: dateRangePresetToDateStr(dateRangePresetAddDays(today, -7)), end: dateRangePresetToDateStr(today) };
-        }
-    },
-    {
-        key: 'last_30_days', label: 'Last 30 Days', range: function () {
-            var today = new Date();
-            return { start: dateRangePresetToDateStr(dateRangePresetAddDays(today, -30)), end: dateRangePresetToDateStr(today) };
+            var fyStartYear = dateRangePresetCurrentFYStartYear(today) - 1;
+            return {
+                start: dateRangePresetToDateStr(new Date(fyStartYear, 3, 1)),
+                end: dateRangePresetToDateStr(new Date(fyStartYear + 1, 2, 31)),
+            };
         }
     },
     {
@@ -81,13 +67,15 @@ var DATE_RANGE_PRESETS = [
         }
     },
     {
-        key: 'prev_fy', label: 'Prev. FY', range: function () {
+        key: 'current_month', label: 'Current Month', range: function () {
             var today = new Date();
-            var fyStartYear = dateRangePresetCurrentFYStartYear(today) - 1;
-            return {
-                start: dateRangePresetToDateStr(new Date(fyStartYear, 3, 1)),
-                end: dateRangePresetToDateStr(new Date(fyStartYear + 1, 2, 31)),
-            };
+            return { start: dateRangePresetToDateStr(dateRangePresetStartOfMonth(today)), end: dateRangePresetToDateStr(today) };
+        }
+    },
+    {
+        key: 'current_week', label: 'Current Week', range: function () {
+            var today = new Date();
+            return { start: dateRangePresetToDateStr(dateRangePresetStartOfWeekMonday(today)), end: dateRangePresetToDateStr(today) };
         }
     },
 ];

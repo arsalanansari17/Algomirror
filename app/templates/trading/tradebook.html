@@ -93,7 +93,13 @@
                     <span id="tbFetchLabel">Fetch</span>
                 </button>
             </div>
-            <div id="tbDatePresets" class="flex flex-wrap gap-2 mt-4"></div>
+            <!-- Spacer matches the combined width of Segment+Symbol+Strategy
+                 (3 flex-1 fields) so the chip row lands under Start/End
+                 date (2 flex-1 fields) rather than the far left. -->
+            <div class="flex flex-col sm:flex-row gap-4 mt-4">
+                <div class="hidden sm:block flex-[3]"></div>
+                <div id="tbDatePresets" class="flex flex-wrap gap-2 flex-[2]"></div>
+            </div>
         </div>
     </div>
     <div id="tbFetchError" class="hidden alert alert-error"></div>
