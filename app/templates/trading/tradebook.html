@@ -93,6 +93,7 @@
                     <span id="tbFetchLabel">Fetch</span>
                 </button>
             </div>
+            <div id="tbDatePresets" class="flex flex-wrap gap-2 mt-4"></div>
         </div>
     </div>
     <div id="tbFetchError" class="hidden alert alert-error"></div>
@@ -243,6 +244,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date_range_presets.js') }}?v={{ asset_version('js/date_range_presets.js') }}"></script>
 <script>
 // Auto-refresh disabled - use manual refresh button instead
 
@@ -513,9 +515,34 @@ async function fetchTradebookCombined() {
     }
 }
 
+// Quick date-range chips (fork-only, app/static/js/date_range_presets.js).
+// Picking one fills both date fields and fetches immediately; editing
+// either field by hand clears the active highlight.
+let tbActiveDatePreset = null;
+
+function tbRenderDatePresets() {
+    renderDateRangePresets('tbDatePresets', tbActiveDatePreset, tbApplyDatePreset);
+}
+
+function tbApplyDatePreset(start, end, key) {
+    document.getElementById('tbStartDate').value = start;
+    document.getElementById('tbEndDate').value = end;
+    tbActiveDatePreset = key;
+    tbRenderDatePresets();
+    fetchTradebookCombined();
+}
+
+function tbClearDatePreset() {
+    tbActiveDatePreset = null;
+    tbRenderDatePresets();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tbStartDate').value = tbTodayStr();
     document.getElementById('tbEndDate').value = tbTodayStr();
+    document.getElementById('tbStartDate').addEventListener('change', tbClearDatePreset);
+    document.getElementById('tbEndDate').addEventListener('change', tbClearDatePreset);
+    tbRenderDatePresets();
     tbRenderHeatmap(tbLastTrades);
     loadTbStrategyOptions();
 });

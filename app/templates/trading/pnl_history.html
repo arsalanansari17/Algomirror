@@ -74,6 +74,7 @@
                     <span id="pnlHistoryFetchLabel">Fetch</span>
                 </button>
             </div>
+            <div id="pnlHistoryDatePresets" class="flex flex-wrap gap-2 mt-4"></div>
         </div>
     </div>
 
@@ -188,6 +189,7 @@
 </dialog>
 
 <script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date_range_presets.js') }}?v={{ asset_version('js/date_range_presets.js') }}"></script>
 <script>
 let lastPnlHistoryData = null;
 let pnlHistoryView = 'day';
@@ -403,10 +405,35 @@ async function submitPnlHistoryImport() {
     }
 }
 
+// Quick date-range chips (fork-only, app/static/js/date_range_presets.js).
+// Picking one fills both date fields and fetches immediately; editing
+// either field by hand clears the active highlight.
+let pnlHistoryActiveDatePreset = null;
+
+function pnlHistoryRenderDatePresets() {
+    renderDateRangePresets('pnlHistoryDatePresets', pnlHistoryActiveDatePreset, pnlHistoryApplyDatePreset);
+}
+
+function pnlHistoryApplyDatePreset(start, end, key) {
+    document.getElementById('pnlHistoryStartDate').value = start;
+    document.getElementById('pnlHistoryEndDate').value = end;
+    pnlHistoryActiveDatePreset = key;
+    pnlHistoryRenderDatePresets();
+    loadPnlHistory();
+}
+
+function pnlHistoryClearDatePreset() {
+    pnlHistoryActiveDatePreset = null;
+    pnlHistoryRenderDatePresets();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     {% if accounts %}
     document.getElementById('pnlHistoryStartDate').value = pnlHistorySevenDaysAgoStr();
     document.getElementById('pnlHistoryEndDate').value = pnlHistoryTodayStr();
+    document.getElementById('pnlHistoryStartDate').addEventListener('change', pnlHistoryClearDatePreset);
+    document.getElementById('pnlHistoryEndDate').addEventListener('change', pnlHistoryClearDatePreset);
+    pnlHistoryRenderDatePresets();
     loadPnlHistory();
     loadStrategyLegs();
     {% endif %}
