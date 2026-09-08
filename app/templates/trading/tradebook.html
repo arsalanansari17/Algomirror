@@ -121,8 +121,8 @@
     {% if tradebook_data %}
     {% set buy_count = tradebook_data | selectattr('action', 'equalto', 'BUY') | list | length %}
     {% set sell_count = tradebook_data | selectattr('action', 'equalto', 'SELL') | list | length %}
-    <!-- Total P&L Summary -->
-    <div class="grid gap-4 md:grid-cols-4">
+    <!-- Trade Stats Summary -->
+    <div class="grid gap-4 md:grid-cols-3">
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Total Trades</div>
@@ -142,14 +142,6 @@
                 <div class="{{ card_description() }}">Sell Trades</div>
                 <div id="tbStatSell" class="{{ card_title() }} text-2xl text-red-600 flex items-center gap-2">
                     {{ trending_down('h-5 w-5') }}<span>{{ sell_count }}</span>
-                </div>
-            </div>
-        </div>
-        <div class="{{ card() }}">
-            <div class="{{ card_header('pb-2') }}">
-                <div class="{{ card_description() }}">Net P&amp;L</div>
-                <div id="tbStatNetPnl" class="{{ card_title() }} text-2xl {{ 'text-green-600' if total_pnl >= 0 else 'text-red-600' }}">
-                    ₹{{ "%.2f"|format(total_pnl) }}
                 </div>
             </div>
         </div>
@@ -452,19 +444,10 @@ function tbRenderTable(trades) {
     const showAccountCol = accountIds.size > 1;
     const buyCount = trades.filter(t => t.action === 'BUY').length;
     const sellCount = trades.length - buyCount;
-    let netPnl = 0;
-    trades.forEach(t => {
-        const value = parseFloat(t.trade_value) || 0;
-        netPnl += t.action === 'SELL' ? value : -value;
-    });
 
     document.getElementById('tbStatTotal').textContent = trades.length;
     document.getElementById('tbStatBuy').querySelector('span').textContent = buyCount;
     document.getElementById('tbStatSell').querySelector('span').textContent = sellCount;
-    const netPnlEl = document.getElementById('tbStatNetPnl');
-    netPnlEl.textContent = tbFormatRupee(netPnl);
-    netPnlEl.classList.toggle('text-green-600', netPnl >= 0);
-    netPnlEl.classList.toggle('text-red-600', netPnl < 0);
 
     if (trades.length === 0) {
         body.innerHTML = `<tr><td colspan="${showAccountCol ? 10 : 9}" class="text-center text-muted-foreground py-8">No trades match these filters</td></tr>`;

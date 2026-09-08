@@ -219,26 +219,9 @@ def tradebook():
                 # Show the timestamp/filltime exactly as returned by OpenAlgo (no formatting)
 
             tradebook_data.extend(trades)
-    
-    # Calculate total P&L
-    total_pnl = 0
-    for trade in tradebook_data:
-        try:
-            # Calculate P&L based on action
-            quantity = float(trade.get('quantity', 0))
-            avg_price = float(trade.get('average_price', 0))
-            trade_value = float(trade.get('trade_value', 0))
-            
-            if trade.get('action') == 'SELL':
-                total_pnl += trade_value
-            else:
-                total_pnl -= trade_value
-        except (ValueError, TypeError):
-            pass
-    
+
     return render_template('trading/tradebook.html',
                          tradebook_data=tradebook_data,
-                         total_pnl=total_pnl,
                          selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
