@@ -181,7 +181,7 @@
                     <tbody id="tbTableBody">
                         {% for trade in tradebook_data %}
                         <tr class="hover">
-                            <td class="text-xs">{{ (trade.timestamp or trade.filltime) | time_only }}</td>
+                            <td class="text-xs">{{ (trade.timestamp or trade.filltime) | date_time }}</td>
                             {% if not single_account %}
                             <td>
                                 <div class="flex items-center gap-2">

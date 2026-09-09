@@ -117,7 +117,7 @@
                     <tbody>
                         {% for order in orderbook_data %}
                         <tr class="hover">
-                            <td class="text-xs">{{ order.timestamp | time_only }}</td>
+                            <td class="text-xs">{{ order.timestamp | date_time }}</td>
                             {% if not single_account %}
                             <td>
                                 <div class="flex items-center gap-2">

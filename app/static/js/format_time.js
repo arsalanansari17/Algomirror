@@ -1,11 +1,14 @@
 /*
  * Shared timestamp display formatting (fork-only), ported from OpenAlgo's
- * frontend/src/pages/TradeBook.tsx (parseTimestamp/formatTime/
- * formatDateTime) so both apps show a trade/order timestamp the same way.
- * app/__init__.py's `time_only`/`date_time` Jinja filters have the same two
- * functions for server-rendered rows - kept in sync by hand, same as
- * tradebook.html's EXCHANGE_SEGMENT_MAP already is with OpenAlgo's
- * Python-side derive_segment().
+ * frontend/src/pages/TradeBook.tsx (parseTimestamp/formatDateTime) so both
+ * apps show a trade/order timestamp the same way. app/__init__.py's
+ * `date_time` Jinja filter has the same function for server-rendered rows -
+ * kept in sync by hand, same as tradebook.html's EXCHANGE_SEGMENT_MAP
+ * already is with OpenAlgo's Python-side derive_segment().
+ *
+ * Full date+time always, live or historical - a time-only display on a
+ * live (today-only) view read as "the date is missing" rather than "this
+ * is always today," so every row shows date+time unconditionally.
  *
  * Every current broker (Zerodha, Kotak) now normalizes its own order/trade
  * timestamps to canonical ISO 8601 before OpenAlgo ever returns them
@@ -33,21 +36,6 @@ function formatTimeParseTimestamp(timestamp) {
     return date.getTime() || 0;
 }
 
-// Time-only, for a live (always-today) row - matches OpenAlgo's OrderBook/
-// TradeBook formatTime().
-function formatTimeOnly(timestamp) {
-    if (!timestamp) return '-';
-    var timeValue = formatTimeParseTimestamp(timestamp);
-    if (timeValue === 0) {
-        var m = String(timestamp).match(/(\d{2}:\d{2}:\d{2})/);
-        return m ? m[1] : timestamp;
-    }
-    var date = new Date(timeValue);
-    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-// Full date+time, for a historical (any-day) row - matches OpenAlgo's
-// TradeBook formatDateTime().
 function formatDateTime(timestamp) {
     if (!timestamp) return '-';
     var timeValue = formatTimeParseTimestamp(timestamp);
