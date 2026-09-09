@@ -181,7 +181,7 @@
                     <tbody id="tbTableBody">
                         {% for trade in tradebook_data %}
                         <tr class="hover">
-                            <td class="text-xs">{{ trade.timestamp if trade.timestamp else trade.filltime if trade.filltime else '-' }}</td>
+                            <td class="text-xs">{{ (trade.timestamp or trade.filltime) | time_only }}</td>
                             {% if not single_account %}
                             <td>
                                 <div class="flex items-center gap-2">
@@ -251,6 +251,7 @@
 
 <script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
 <script src="{{ url_for('static', filename='js/date_range_presets.js') }}?v={{ asset_version('js/date_range_presets.js') }}"></script>
+<script src="{{ url_for('static', filename='js/format_time.js') }}?v={{ asset_version('js/format_time.js') }}"></script>
 <script>
 // Auto-refresh disabled - use manual refresh button instead
 
@@ -463,7 +464,7 @@ function tbRenderTable(trades) {
     }
     body.innerHTML = trades.map(t => `
         <tr class="hover">
-            <td class="text-xs">${t.timestamp || t.filltime || '-'}</td>
+            <td class="text-xs">${formatDateTime(t.timestamp || t.filltime)}</td>
             ${showAccountCol ? `<td class="text-xs">${t.account_name || ''}</td>` : ''}
             <td class="font-semibold">${t.symbol || ''}</td>
             <td>${t.exchange || ''}</td>

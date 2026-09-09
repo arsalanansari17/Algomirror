@@ -4,6 +4,7 @@
 import os
 import logging
 import warnings
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from flask import Flask
 
@@ -322,6 +323,45 @@ def create_app(config_name=None, start_background_services=True):
             grouped = ','.join(pairs) + ',' + last3
         result = f'{grouped}.{decimal_part}'
         return f'-{result}' if negative else result
+
+    # Server-rendered timestamp formatting (fork-only) - for pages that
+    # print an order/trade timestamp directly in Jinja rather than via the
+    # client-side JS re-render path (app/static/js/format_time.js has the
+    # same two functions for that path; kept in sync by hand, same as
+    # tradebook.html's EXCHANGE_SEGMENT_MAP already is with OpenAlgo's
+    # Python-side derive_segment()). Every current broker (Zerodha, Kotak)
+    # now normalizes its own order/trade timestamps to canonical ISO 8601
+    # before OpenAlgo ever returns them (broker/{zerodha,kotak}/mapping/
+    # order_data.py on the OpenAlgo side) - the fallback formats below exist
+    # only in case one of the 3 accounts is running an OpenAlgo build from
+    # before that normalization landed, not the common case.
+    def _parse_broker_timestamp(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            pass
+        for fmt in ('%d-%m-%Y %H:%M:%S', '%d-%b-%Y %H:%M:%S'):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @app.template_filter('time_only')
+    def format_time_only(value):
+        """Time-only, for a live (always-today) row - matches OpenAlgo's
+        OrderBook/TradeBook formatTime()."""
+        parsed = _parse_broker_timestamp(value)
+        return parsed.strftime('%I:%M:%S %p') if parsed else (value or '-')
+
+    @app.template_filter('date_time')
+    def format_date_time(value):
+        """Full date+time, for a historical (any-day) row - matches
+        OpenAlgo's TradeBook formatDateTime()."""
+        parsed = _parse_broker_timestamp(value)
+        return parsed.strftime('%d %b %Y, %I:%M:%S %p') if parsed else (value or '-')
 
     # CSRF error handler - redirects to login with message when session expires
     @app.errorhandler(CSRFError)
