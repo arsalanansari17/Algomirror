@@ -12,7 +12,7 @@
 {% set effective_ids = selected_ids if selected_ids else accounts|map(attribute='id')|list %}
 <div class="dropdown dropdown-end" id="accountFilterDropdown">
     <div tabindex="0" role="button" class="btn btn-sm btn-outline h-9 min-w-[180px] justify-between font-normal">
-        <span>
+        <span id="accountFilterLabel">
             {%- if not selected_ids or selected_ids|length == accounts|length -%}
                 All Accounts
             {%- elif selected_ids|length == 1 -%}
@@ -29,9 +29,9 @@
         {% for account in accounts %}
         <label class="flex items-center gap-2 py-1 px-1 rounded hover:bg-base-200 cursor-pointer">
             <input type="checkbox" class="checkbox checkbox-sm account-filter-checkbox"
-                   value="{{ account.id }}"
+                   value="{{ account.id }}" data-name="{{ account.account_name }}"
                    {{ 'checked' if account.id in effective_ids else '' }}
-                   {%- if on_change_js %} onchange="{{ on_change_js }}()"
+                   {%- if on_change_js %} onchange="updateAccountFilterLabel(); {{ on_change_js }}()"
                    {%- else %} onchange="updateAccountFilterApplyState()"
                    {%- endif -%}>
             <span class="text-sm">{{ account.account_name }}</span>
@@ -47,6 +47,24 @@
     </div>
 </div>
 <script>
+// Callback mode never reloads the page, so the button label rendered above
+// would otherwise keep saying "All Accounts" after boxes are unticked. Same
+// rules as the server-side label: all or none ticked (none is treated as
+// "all" by the pages using callback mode) -> All Accounts, one -> its name,
+// otherwise a count.
+function updateAccountFilterLabel() {
+    var boxes = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox');
+    var checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
+    var label = document.getElementById('accountFilterLabel');
+    if (!label) return;
+    if (checked.length === 0 || checked.length === boxes.length) {
+        label.textContent = 'All Accounts';
+    } else if (checked.length === 1) {
+        label.textContent = checked[0].getAttribute('data-name');
+    } else {
+        label.textContent = checked.length + ' Accounts';
+    }
+}
 function updateAccountFilterApplyState() {
     var checked = document.querySelectorAll('#accountFilterDropdown .account-filter-checkbox:checked');
     var btn = document.getElementById('accountFilterApplyBtn');

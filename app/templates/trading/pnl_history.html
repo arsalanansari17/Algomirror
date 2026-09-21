@@ -274,7 +274,14 @@ function setPnlHistoryView(view) {
     document.getElementById('pnlHistoryScripView').classList.toggle('hidden', view !== 'scrip');
 }
 
+// Every account tick/untick fires its own fetch, so two requests can be in
+// flight at once. Only the latest one may render - otherwise a slower,
+// older response (e.g. the intermediate two-account selection) lands last
+// and overwrites the report for the accounts actually selected.
+let pnlHistoryRequestSeq = 0;
+
 async function loadPnlHistory() {
+    const requestId = ++pnlHistoryRequestSeq;
     const startDate = document.getElementById('pnlHistoryStartDate').value;
     const endDate = document.getElementById('pnlHistoryEndDate').value;
     const errorEl = document.getElementById('pnlHistoryError');
@@ -307,6 +314,7 @@ async function loadPnlHistory() {
     try {
         const response = await fetch(`{{ url_for('trading.pnl_history_combined') }}?${params.toString()}`);
         const result = await response.json();
+        if (requestId !== pnlHistoryRequestSeq) return;
         if (result.status !== 'success') {
             throw new Error(result.message || 'Failed to load P&L history');
         }
@@ -321,11 +329,16 @@ async function loadPnlHistory() {
             failedEl.classList.remove('hidden');
         }
     } catch (e) {
+        if (requestId !== pnlHistoryRequestSeq) return;
         errorEl.textContent = e.message || 'Failed to load P&L history';
         errorEl.classList.remove('hidden');
     } finally {
-        fetchBtn.disabled = false;
-        fetchLabel.textContent = 'Fetch';
+        // A superseded request must not re-enable Fetch while the newer one
+        // is still loading.
+        if (requestId === pnlHistoryRequestSeq) {
+            fetchBtn.disabled = false;
+            fetchLabel.textContent = 'Fetch';
+        }
     }
 }
 
