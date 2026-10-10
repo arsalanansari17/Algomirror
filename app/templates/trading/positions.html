@@ -210,7 +210,7 @@
                             <td class="text-right font-medium qty-cell {{ 'text-green-600' if qty > 0 else ('text-red-600' if qty < 0 else '') }}" data-pv="qty">
                                 {{ position.get('quantity', 0) }}
                             </td>
-                            <td class="font-mono text-right avgprice-cell" data-pv="avgprice">{{ fmt_currency(position.get('average_price', 0)|float) }}</td>
+                            <td class="font-mono text-right avgprice-cell" data-pv="avgprice"{% if position.get('average_price_basis') == 'carry_forward_valuation' %} title="Kotak's overnight valuation (the previous settlement price), not your entry price"{% elif position.get('average_price_basis') == 'strategy_book' %} title="Entry average from the strategy book (Kotak reports its overnight valuation here)"{% endif %}>{{ fmt_currency(position.get('average_price', 0)|float) }}{% if position.get('average_price_basis') == 'carry_forward_valuation' %}*{% endif %}</td>
                             <td class="font-mono text-right ltp-cell">{{ fmt_currency(position.get('ltp', 0)|float) if position.get('ltp') is not none else '-' }}</td>
                             {% set row_pnl_positive = position.get('pnl', 0)|float >= 0 %}
                             <td class="text-right font-medium pnl-cell {{ 'text-green-600' if row_pnl_positive else 'text-red-600' }}" data-pv="pnl">

@@ -10,6 +10,7 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
+from app.utils.position_cost_basis import apply_cost_basis, has_carry_forward_valuation
 from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 from app.utils.tradebook_combined import compute_combined_tradebook
 from datetime import datetime
@@ -289,6 +290,32 @@ def positions():
         except Exception as e:
             current_app.logger.warning(f'Could not backfill missing LTP for account {account.id}: {e}')
 
+    def correct_carried_cost_basis(positions_list, account):
+        """Kotak reports a carried-over leg's previous settlement price as its
+        average (upstream marketcalls/openalgo#2061), which made Avg Price,
+        P&L and P&L % wrong for a position held from yesterday. OpenAlgo flags
+        such rows (average_price_basis = carry_forward_valuation) and its
+        strategy book holds the real entry average, so a flagged row is
+        replaced from /api/v1/pnl/attribution - only when the book fully
+        explains it (app/utils/position_cost_basis.py). Best-effort: any
+        failure leaves the broker's numbers, still flagged."""
+        if not has_carry_forward_valuation(positions_list):
+            return
+        try:
+            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+            resp = client.strategy_attribution('positions')
+            if resp.get('status') != 'success':
+                current_app.logger.warning(
+                    f'Strategy attribution unavailable for account {account.id}: {resp.get("message")}')
+                return
+            rows = (resp.get('data') or {}).get('rows') or []
+            fixed = apply_cost_basis(positions_list, rows)
+            if fixed:
+                current_app.logger.info(
+                    f'Account {account.id}: {fixed} carried position(s) show the strategy book average')
+        except Exception as e:
+            current_app.logger.warning(f'Could not correct carried cost basis for account {account.id}: {e}')
+
     def enrich_positions(positions_list, account):
         """Add account info and calculate metrics for positions"""
         for position in positions_list:
@@ -330,6 +357,7 @@ def positions():
         if response and response.get('status') == 'success':
             pos_list = response.get('data', [])
             backfill_missing_ltp(pos_list, account)
+            correct_carried_cost_basis(pos_list, account)
             enrich_positions(pos_list, account)
             # Keep squared-off (quantity 0) rows too - shown dimmed/"Closed" in
             # the template - so today's realized P&L from a closed position
@@ -347,6 +375,7 @@ def positions():
             # Use cached data if API fails
             pos_list = account.last_positions_data
             backfill_missing_ltp(pos_list, account)
+            correct_carried_cost_basis(pos_list, account)
             enrich_positions(pos_list, account)
             positions_data.extend(pos_list)
 

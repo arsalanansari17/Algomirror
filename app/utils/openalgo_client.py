@@ -127,6 +127,17 @@ class ExtendedOpenAlgoAPI(api):
             params["strategy"] = strategy
         return self._get_request("pnl/strategy-legs", params)
 
+    def strategy_attribution(self, kind="positions", m2m=False):
+        """Live positions (or holdings) split into per-strategy slices -
+        fork-only POST /api/v1/pnl/attribution (openalgo's
+        services/strategy_attribution.py), which joins the broker rows with
+        the strategy book. Each slice carries the strategy's own entry
+        average_price, which is how a carried Kotak leg (whose broker
+        "average" is the previous settlement price, upstream #2061) gets its
+        real cost basis back - see app/utils/position_cost_basis.py.
+        """
+        return self._make_request("pnl/attribution", {"apikey": self.api_key, "kind": kind, "m2m": m2m})
+
     def set_trade_strategy(self, trade_id, strategy):
         """Manual strategy-tag fallback for one historical trade row -
         fork-only PATCH /api/v1/pnl/trades/<id>/strategy. For CSV-imported
