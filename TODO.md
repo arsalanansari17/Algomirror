@@ -56,4 +56,14 @@ changed files and restart `algomirror.service`. VM files are LF, the repo is CRL
   Fix the scaffold once, then go back to normal migrations.
 
 ## Done
+- 2026-10-10 Positions page: real entry average for carried Kotak legs (`app/utils/position_cost_basis.py`, route
+  `correct_carried_cost_basis`, `ExtendedOpenAlgoAPI.strategy_attribution`, tooltip + asterisk). Kotak reports the
+  previous settlement price as a carried leg's average (upstream openalgo#2061); a row OpenAlgo flags
+  `average_price_basis = carry_forward_valuation` is replaced from `POST /api/v1/pnl/attribution` only when the strategy
+  book fully explains it. Commit `3f3b903`, 8 tests (`tests/test_position_cost_basis.py`). **Deployed** to acc1
+  2026-10-10: the VM's two hand-edited templates (`account_filter.html`, `pnl_history.html`) were byte-identical to
+  `77d5511`, so the VM was reset to `3f3b903` (`git fetch origin feat/multi-account-filter; git reset --hard FETCH_HEAD`)
+  and its old commits (`c9149be` + revert `59dba24`, net zero) are kept on the VM branch `backup-vm-20261010`. The VM tree
+  is now clean and equals the fork branch, so the "never git pull / copy the files" note above no longer applies; a plain
+  `git fetch` + `git reset --hard` or fast-forward pull works. Still to confirm in the browser on a Monday carried position.
 - 2026-10-01 Strategy tag retag at DB level on acc1 (`position_tags`, 13 rows).
