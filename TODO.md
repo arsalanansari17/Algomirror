@@ -39,6 +39,11 @@ changed files and restart `algomirror.service`. VM files are LF, the repo is CRL
   `compiled.css` after any template change that adds or removes a Tailwind class.
 
 ### UI parity with OpenAlgo
+- [ ] **Port all of OpenAlgo's Reports features to AlgoMirror** (2026-10-12, user request). Next action: inventory the
+  OpenAlgo report pages (P&L History, strategy P&L views, tradebook/orderbook exports and any other "Reports"
+  entries, from `openalgo/frontend/src/config/navigation.ts`), mark which AlgoMirror already has, then build the gaps
+  page by page with the parity checklist (memory `reference_openalgo_parity_review_checklist`). Multi-account data
+  comes from the per-account OpenAlgo APIs, so each report needs an account filter.
 - [ ] Positions page: next in the page-by-page parity pass (Holdings is done). Use the
   checklist in memory `reference_openalgo_parity_review_checklist`.
 - [ ] Orderbook/Tradebook feature gaps: sorting, filters, per-order Cancel / Cancel All /
