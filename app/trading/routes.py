@@ -12,6 +12,7 @@ from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
 from app.utils.position_cost_basis import apply_cost_basis, has_carry_forward_valuation
 from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
+from app.utils.pnl_analysis_combined import compute_combined_pnl_analysis
 from app.utils.tradebook_combined import compute_combined_tradebook
 from datetime import datetime
 import json
@@ -440,18 +441,11 @@ def pnl_combined():
 @trading_bp.route('/pnl-history')
 @login_required
 def pnl_history_page():
-    """Consolidated multi-day P&L History page - a thin shell like
-    pnl_curve_page() above. All real data is fetched by the page's own JS
-    calling /trading/api/pnl-history-combined on load and on Fetch-click,
-    not server-rendered - the account/date/segment/symbol filters all need
-    to re-fetch without a full page reload, matching OpenAlgo's own React
-    page (frontend/src/pages/PnlHistory.tsx)."""
-    accounts = current_user.get_active_accounts()
-    return render_template(
-        'trading/pnl_history.html',
-        accounts=accounts,
-        selected_account_ids=get_selected_account_ids(),
-    )
+    """Retired: the P&L History page was merged into P&L Analysis (as
+    OpenAlgo's was). Kept as a redirect so bookmarks keep working, with the
+    ?account= selection carried over. The /api/pnl-history-combined data
+    endpoint below is unchanged."""
+    return redirect(url_for('trading.pnl_analysis_page', account=request.args.getlist('account')))
 
 
 @trading_bp.route('/api/pnl-history-combined')
@@ -481,6 +475,47 @@ def pnl_history_combined():
     except Exception as e:
         current_app.logger.exception(f'Error computing combined P&L history: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L history'}), 500
+
+    return jsonify({'status': 'success', 'data': data})
+
+
+@trading_bp.route('/pnl-analysis')
+@login_required
+def pnl_analysis_page():
+    """P&L Analysis page - a thin shell like pnl_history_page() above. The
+    data comes from /trading/api/pnl-analysis, and the page's own JS runs
+    OpenAlgo's P&L model (static/js/vendor/pnl-model.js) on it."""
+    accounts = current_user.get_active_accounts()
+    return render_template(
+        'trading/pnl_analysis.html',
+        accounts=accounts,
+        selected_account_ids=get_selected_account_ids(),
+    )
+
+
+@trading_bp.route('/api/pnl-analysis')
+@login_required
+@limiter.limit("20 per minute")
+def pnl_analysis():
+    """Closed lots, open positions and (Equity) the daily curve for a date
+    range, merged across every selected account - see
+    app/utils/pnl_analysis_combined.py. Nothing is persisted."""
+    accounts = get_selected_accounts()
+    if not accounts:
+        return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
+
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    if not start_date or not end_date:
+        return jsonify({'status': 'error', 'message': 'start_date and end_date are required'}), 400
+    segment = request.args.get('segment') or None
+    symbol_contains = request.args.get('symbol_contains') or None
+
+    try:
+        data = compute_combined_pnl_analysis(accounts, start_date, end_date, segment, symbol_contains)
+    except Exception as e:
+        current_app.logger.exception(f'Error computing combined P&L analysis: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L analysis'}), 500
 
     return jsonify({'status': 'success', 'data': data})
 

@@ -114,6 +114,23 @@ class ExtendedOpenAlgoAPI(api):
             params["strategy"] = strategy
         return self._get_request("pnl/trades", params)
 
+    def pnl_curve(self, start_date, end_date, basis="actual_cost", symbol_contains=None):
+        """Daily realized and unrealized P&L per strategy for Equity -
+        fork-only GET /api/v1/pnl/curve (openalgo's services/pnl_curve.py).
+        AlgoMirror's P&L Analysis page calls this once per account and sums
+        the curves (app/utils/pnl_analysis_combined.py). `symbol_contains`
+        narrows the fills by part of a symbol before matching.
+        """
+        params = {
+            "apikey": self.api_key,
+            "start_date": start_date,
+            "end_date": end_date,
+            "basis": basis,
+        }
+        if symbol_contains:
+            params["symbol_contains"] = symbol_contains
+        return self._get_request("pnl/curve", params)
+
     def strategy_legs(self, strategy=None):
         """Every currently-tracked strategy leg for this account - a thin
         read over openalgo's already-running strategy book

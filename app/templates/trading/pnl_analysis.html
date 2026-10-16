@@ -1,0 +1,285 @@
+{% extends "layout.html" %}
+{% from 'macros/account_filter.html' import account_filter %}
+{% from 'macros/ui.html' import button, card, card_content %}
+
+{% block title %}P&L Analysis - AlgoMirror{% endblock %}
+
+{% block content %}
+<div id="paPageWrap" class="space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight">P&amp;L Analysis</h1>
+            <p class="text-muted-foreground">
+                Realized and unrealized profit and loss for a date range, as a summary, a curve and
+                day, week, month and scrip breakdowns, merged across every selected account
+            </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            {{ account_filter(accounts, selected_account_ids, 'trading.pnl_analysis_page', on_change_js='onPnlAnalysisAccountFilterChange') }}
+            {% if accounts %}
+            <button type="button" id="paImportBtn" class="{{ button('outline', 'sm') }}" onclick="paImportModal.showModal()">
+                Upload CSV
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if not accounts %}
+    <div class="{{ card() }}">
+        <div class="{{ card_content() }} text-center py-16">
+            <h2 class="text-2xl font-bold mb-2">No Active Accounts</h2>
+            <p class="text-muted-foreground">Add a trading account to see its P&amp;L analysis here.</p>
+            <div class="mt-6">
+                <a href="{{ url_for('accounts.add') }}" class="{{ button('default') }}">Add Account</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- Filter bar: Segment and P&L type have no default, so nothing is
+         fetched until both are chosen. -->
+    <div class="{{ card() }}">
+        <div class="{{ card_content('pt-6') }}">
+            <div class="flex flex-col sm:flex-row sm:items-end gap-4">
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Segment</span></label>
+                    <select id="paSegment" class="select select-bordered select-sm" onchange="paOnControlChange()">
+                        <option value="" selected disabled>Select segment</option>
+                        <option value="all">All</option>
+                        <option value="equity">Equity</option>
+                        <option value="fno">Futures &amp; Options</option>
+                        <option value="currency">Currency</option>
+                        <option value="commodity">Commodity</option>
+                        <option value="mutual_fund">Mutual Funds</option>
+                    </select>
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">P&amp;L</span></label>
+                    <select id="paPnlType" class="select select-bordered select-sm" onchange="paOnPnlTypeChange()">
+                        <option value="" selected disabled>Select P&amp;L type</option>
+                        <option value="realized">Realized</option>
+                        <option value="unrealized">Unrealized</option>
+                        <option value="combined">Combined</option>
+                    </select>
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">Start date</span></label>
+                    <input type="date" id="paStartDate" class="input input-bordered input-sm">
+                </div>
+                <div class="form-control flex-1">
+                    <label class="label"><span class="label-text">End date</span></label>
+                    <input type="date" id="paEndDate" class="input input-bordered input-sm">
+                </div>
+                <button type="button" id="paFetchBtn" class="{{ button('default', 'sm') }}" onclick="paFetch()" disabled>
+                    <span id="paFetchLabel">Fetch</span>
+                </button>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-4 mt-4">
+                <div class="hidden sm:block flex-[2]"></div>
+                <div id="paDatePresets" class="flex flex-wrap gap-2 flex-[2]"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Applied filters and the Filters button. -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div id="paAppliedTags" class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-muted-foreground">No filters applied</span>
+        </div>
+        <button type="button" id="paFiltersBtn" class="{{ button('outline', 'sm') }} relative" onclick="paFiltersModal.showModal()">
+            Filters
+            <span id="paFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
+        </button>
+    </div>
+
+    <div id="paError" class="hidden alert alert-error"></div>
+    <div id="paFailedAccounts" class="hidden alert alert-warning"></div>
+    <div id="paCurveMissing" class="hidden alert alert-warning"></div>
+    <div id="paNotice" class="hidden text-xs text-warning"></div>
+
+    <div id="paEmpty" class="text-center py-16 text-muted-foreground">
+        <p class="font-medium">Build a report</p>
+        <p class="text-sm">Choose a segment and a P&amp;L type, then click Fetch</p>
+    </div>
+
+    <div id="paLoading" class="hidden flex justify-center py-6">
+        <span class="loading loading-spinner loading-lg"></span>
+    </div>
+
+    <div id="paContent" class="hidden space-y-4">
+        <!-- Calendar -->
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-4') }}">
+                <div class="flex items-start justify-between cursor-pointer" onclick="paToggle('paCalendarBody', 'paCalendarChevron')">
+                    <div>
+                        <h3 class="font-semibold">Calendar</h3>
+                        <p class="text-sm text-muted-foreground">Realized P&amp;L by day, for the selection</p>
+                    </div>
+                    <span id="paCalendarChevron" class="text-muted-foreground">&#9662;</span>
+                </div>
+                <div id="paCalendarBody" class="mt-3">
+                    <div id="paHeatmap" class="overflow-x-auto pb-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div id="paSummary" class="space-y-4"></div>
+
+        <!-- Curve -->
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-4') }}">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="font-semibold" id="paCurveTitle">Cumulative P&amp;L</h3>
+                        <p class="text-sm text-muted-foreground">Click a name on the plot to show or hide a line. Alt+R resets the scale.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="{{ button('outline', 'sm') }}" id="paCurveShotBtn" onclick="paDownloadCurvePng()">Image</button>
+                        <button type="button" class="{{ button('default', 'sm') }}" id="paCurveChartBtn" onclick="paSetCurveView('chart')">Chart</button>
+                        <button type="button" class="{{ button('outline', 'sm') }}" id="paCurveTableBtn" onclick="paSetCurveView('table')">Table</button>
+                    </div>
+                </div>
+                <div id="paCurveChartWrap" class="mt-3">
+                    <div id="paCurveBox" class="relative" style="height: 500px;">
+                        <div id="paCurveWatermark" class="absolute inset-0 flex items-center justify-center pointer-events-none select-none text-base-content/15" style="z-index:0;">
+                            <div class="text-center">
+                                <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px;">AlgoMirror</div>
+                                <div style="font-family: Arial, sans-serif; font-size: 16px;">Powered by OpenAlgo</div>
+                            </div>
+                        </div>
+                        <div id="paCurveChart" class="absolute inset-0" style="z-index:1;"></div>
+                        <div id="paCurveLegend" class="absolute left-2 top-2 flex flex-wrap gap-1" style="z-index:5; max-width:85%;"></div>
+                        <div id="paCurveTooltip" class="hidden absolute pointer-events-none rounded-md border border-base-300 bg-base-100 px-3 py-2 text-xs shadow-md" style="z-index:6; min-width:190px;"></div>
+                    </div>
+                    <p class="mt-2 text-xs text-muted-foreground">
+                        Lower pane: current drawdown from the running high (grey), and the deepest drawdown so far (dashed).
+                    </p>
+                </div>
+                <div id="paCurveTableWrap" class="hidden mt-3 max-h-[520px] overflow-auto">
+                    <table class="table table-sm">
+                        <thead><tr><th>Date</th><th class="text-right">Day</th><th class="text-right">Cumulative</th><th class="text-right">Drawdown</th></tr></thead>
+                        <tbody id="paCurveTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategies: shows what the Filters dialog lets through. -->
+        <div id="paStrategiesCard" class="{{ card() }}">
+            <div class="{{ card_content('pt-4') }}">
+                <div class="flex items-start justify-between cursor-pointer" onclick="paToggle('paStrategiesBody', 'paStrategiesChevron')">
+                    <div>
+                        <h3 class="font-semibold">Strategies</h3>
+                        <p class="text-sm text-muted-foreground">The strategies selected in Filters. Each is judged on the days it closed something.</p>
+                    </div>
+                    <span id="paStrategiesChevron" class="text-muted-foreground">&#9662;</span>
+                </div>
+                <div id="paStrategiesBody" class="mt-3 overflow-x-auto">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Strategy</th><th class="text-right">Net P&amp;L</th><th class="text-right">Realized</th>
+                                <th class="text-right">Unrealized</th><th class="text-right">Max drawdown</th>
+                                <th class="text-right">Current drawdown</th><th class="text-right">Win days</th>
+                                <th class="text-right">Profit factor</th><th class="text-right">Active days</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paStrategiesBodyRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Breakdown -->
+        <div class="{{ card() }}">
+            <div class="{{ card_content('pt-4') }}">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="font-semibold">Breakdown</h3>
+                        <p id="paBreakdownHint" class="text-sm text-muted-foreground"></p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="tabs tabs-boxed bg-base-200 p-1">
+                            <a class="tab tab-active" id="paTabDay" onclick="paSetBreakdown('day')">Day</a>
+                            <a class="tab" id="paTabWeek" onclick="paSetBreakdown('week')">Week</a>
+                            <a class="tab" id="paTabMonth" onclick="paSetBreakdown('month')">Month</a>
+                            <a class="tab" id="paTabScrip" onclick="paSetBreakdown('scrip')">Scrip</a>
+                        </div>
+                        <button type="button" class="{{ button('default', 'sm') }}" id="paBrChartBtn" onclick="paSetBreakdownMode('chart')">Chart</button>
+                        <button type="button" class="{{ button('outline', 'sm') }}" id="paBrTableBtn" onclick="paSetBreakdownMode('table')">Table</button>
+                        <button type="button" class="{{ button('outline', 'sm') }}" id="paBrExportBtn" onclick="paExportBreakdown()">Image</button>
+                    </div>
+                </div>
+                <div id="paBreakdownBody" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Filters dialog: symbol, strategy, exchange, product. Narrows the whole page. -->
+<dialog id="paFiltersModal" class="modal">
+    <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-1">P&amp;L Filters</h3>
+        <p class="text-sm text-base-content/60 mb-4">
+            Narrow the report tables and the curve by symbol, strategy, exchange or product
+        </p>
+        <div class="form-control mb-4">
+            <label class="label"><span class="label-text">Symbol</span></label>
+            <input type="text" id="paFilterSymbol" placeholder="e.g. INFY" class="input input-bordered input-sm" oninput="paOnSymbolInput()">
+        </div>
+        <div id="paFilterStrategies" class="mb-4"></div>
+        <div id="paFilterExchanges" class="mb-4"></div>
+        <div id="paFilterProducts" class="mb-4"></div>
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="paClearFilters()">Clear All</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="paFiltersModal.close()">Done</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- CSV backfill - single-account target, since a CSV only ever belongs to one broker
+     session (everything else on this page merges across the selected accounts). -->
+<dialog id="paImportModal" class="modal">
+    <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-1">Import P&amp;L History</h3>
+        <p class="text-sm text-base-content/60 mb-4">
+            Upload an exported tradebook CSV to backfill one account's history for dates before its
+            daily capture started.
+        </p>
+        <div class="form-control mb-3">
+            <label class="label"><span class="label-text">Account</span></label>
+            <select id="paImportAccount" class="select select-bordered">
+                {% for account in accounts %}
+                <option value="{{ account.id }}">{{ account.account_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-control mb-3">
+            <label class="label"><span class="label-text">Tradebook CSV</span></label>
+            <input type="file" id="paImportFile" accept=".csv" class="file-input file-input-bordered">
+        </div>
+        <div id="paImportError" class="hidden alert alert-error text-sm mb-2"></div>
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="paImportModal.close()">Cancel</button>
+            <button type="button" id="paImportSubmitBtn" class="btn btn-primary btn-sm" onclick="paSubmitImport()">Upload</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/vendor/lightweight-charts.standalone.production.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/html2canvas-pro.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/pnl-model.js') }}?v={{ asset_version('js/vendor/pnl-model.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calendar_heatmap.js') }}?v={{ asset_version('js/calendar_heatmap.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date_range_presets.js') }}?v={{ asset_version('js/date_range_presets.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pnl_analysis.js') }}?v={{ asset_version('js/pnl_analysis.js') }}"></script>
+<script>
+    PnlAnalysisPage.init({
+        dataUrl: "{{ url_for('trading.pnl_analysis') }}",
+        importUrl: "{{ url_for('trading.pnl_history_import') }}"
+    });
+</script>
+{% endblock %}

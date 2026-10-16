@@ -14,6 +14,7 @@ changed files and restart `algomirror.service`. VM files are LF, the repo is CRL
 ## Open
 
 ### Do next
+- [ ] **P&L Analysis deployed to acc1 2026-10-16; old P&L History page retired** (user confirmed it works). `/trading/pnl-analysis` (template `trading/pnl_analysis.html`, `static/js/pnl_analysis.js`) reads `/trading/api/pnl-analysis` (`app/utils/pnl_analysis_combined.py`: per-account `/pnl/history` + `/pnl/curve`, lots concatenated, curves summed) and runs OpenAlgo's model, vendored as `static/js/vendor/pnl-model.js` (generated from the openalgo fork at 070f1007e; regenerate when `pnlModel.ts`/`pnlCurve.ts`/`pnlBuckets.ts`/`pnlPalette.ts` change). `/trading/pnl-history` now redirects to it, the Reports menu has the one entry, and the CSV upload moved onto the new page. The intraday P&L Plot stays. VM backups: `/var/tmp/algomirror-bak-20261016*`. Next action: compare a two-account selection with OpenAlgo's page for one range; push the commit to the `fork` remote.
 - [ ] **Check the retag in the UI** (2026-10-01). `position_tags.strategy` on acc1 was
   rewritten `DonchianSwing -> EquityBreakoutPositional` (13 rows) at DB level.
   Open Holdings/Positions and confirm the strategy tag shows the new name.
