@@ -430,7 +430,8 @@ def pnl_combined():
         return jsonify({'status': 'error', 'message': 'No active trading accounts configured'}), 400
 
     try:
-        data = compute_combined_pnl(accounts)
+        basis = 'm2m' if request.args.get('basis') == 'm2m' else 'pnl'
+        data = compute_combined_pnl(accounts, basis)
     except Exception as e:
         current_app.logger.exception(f'Error computing combined intraday P&L: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L'}), 500

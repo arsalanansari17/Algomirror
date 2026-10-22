@@ -442,9 +442,36 @@ def compute_account_series(client, today=None):
     return portfolio_pnl.sum(axis=1).rename('Total_PnL')
 
 
-def compute_combined_pnl(accounts):
+def _series_from_openalgo(data):
+    """OpenAlgo's pnl_series ([{time (ms), value}]) as a Series on an IST index,
+    or None when it holds no points."""
+    points = (data or {}).get('pnl_series') or []
+    if not points:
+        return None
+    index = pd.to_datetime([p['time'] for p in points], unit='ms', utc=True).tz_convert(IST)
+    return pd.Series([float(p['value']) for p in points], index=index, name='Total_PnL')
+
+
+def _openalgo_series(client, basis):
+    """(handled, series) from OpenAlgo's own intraday curve for this account.
+    handled is False when it could not answer (an OpenAlgo without the endpoint,
+    an error, or a curve it cannot build exactly), so the caller computes the
+    series itself."""
+    try:
+        resp = client.pnl_intraday(basis)
+    except Exception:
+        logger.exception('OpenAlgo intraday P&L call failed')
+        return False, None
+    if not isinstance(resp, dict) or resp.get('status') != 'success' or resp.get('data') is None:
+        return False, None
+    return True, _series_from_openalgo(resp['data'])
+
+
+def compute_combined_pnl(accounts, basis='pnl'):
     """
-    Compute each account's intraday P&L series in parallel, then merge them
+    Compute each account's intraday P&L series in parallel (from OpenAlgo's own
+    curve on `basis`, 'pnl' or 'm2m', falling back to a local reconstruction),
+    then merge them
     into one combined portfolio curve (outer-join on timestamp, forward-fill,
     sum) - the same trick OpenAlgo uses to combine symbols within one
     account, applied here across accounts instead.
@@ -459,6 +486,11 @@ def compute_combined_pnl(accounts):
     def _one(account):
         try:
             client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+            # OpenAlgo's own curve first, so this plot and the Positions page
+            # use one formula; the local reconstruction is the fallback.
+            handled, series = _openalgo_series(client, basis)
+            if handled:
+                return account, series, None
             return account, compute_account_series(client), None
         except AccountPnlError as e:
             logger.error(f'Account {account.id} P&L unavailable: {e}')
@@ -522,9 +554,14 @@ def compute_combined_pnl(accounts):
     # Each account's own aligned series (zero-filled before that account's
     # first trade, same timestamps as the combined curve) so the frontend can
     # overlay per-account lines and show a per-account breakdown on hover.
+    # An account with no trades or positions today (exit-only accounts) has no
+    # column; it still gets a zero series on the same timestamps, because the
+    # page sums a subset of accounts index by index from the first selected
+    # account's timeline and an empty first series blanked the whole plot.
+    zero_series = [{'time': point['time'], 'value': 0.0} for point in pnl_series]
     for entry in per_account:
         col = f"account_{entry['account_id']}"
-        entry['series'] = _series_to_points(col) if col in account_cols else []
+        entry['series'] = _series_to_points(col) if col in account_cols else list(zero_series)
 
     return {
         'current_mtm': round(float(combined['Total_PnL'].iloc[-1]), 2),

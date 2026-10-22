@@ -131,6 +131,15 @@ class ExtendedOpenAlgoAPI(api):
             params["symbol_contains"] = symbol_contains
         return self._get_request("pnl/curve", params)
 
+    def pnl_intraday(self, basis="pnl"):
+        """Today's intraday P&L curve for this account - fork-only
+        GET /api/v1/pnl/intraday, the same curve and last point as OpenAlgo's
+        own P&L Tracker and Positions page. basis "pnl" is the broker's P&L,
+        "m2m" is today's move only. `data` is None when OpenAlgo cannot build
+        the curve exactly; the caller then falls back to its own calculation.
+        """
+        return self._get_request("pnl/intraday", {"apikey": self.api_key, "basis": basis})
+
     def strategy_legs(self, strategy=None):
         """Every currently-tracked strategy leg for this account - a thin
         read over openalgo's already-running strategy book
