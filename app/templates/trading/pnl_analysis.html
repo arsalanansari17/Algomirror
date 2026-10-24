@@ -17,6 +17,9 @@
         <div class="flex items-center gap-2 flex-wrap">
             {{ account_filter(accounts, selected_account_ids, 'trading.pnl_analysis_page', on_change_js='onPnlAnalysisAccountFilterChange') }}
             {% if accounts %}
+            <button type="button" id="paShareBtn" class="{{ button('outline', 'sm') }}" onclick="paOpenShare()" disabled>
+                Share
+            </button>
             <button type="button" id="paImportBtn" class="{{ button('outline', 'sm') }}" onclick="paImportModal.showModal()">
                 Upload CSV
             </button>
@@ -235,6 +238,32 @@
         <div class="modal-action">
             <button type="button" class="btn btn-ghost btn-sm" onclick="paClearFilters()">Clear All</button>
             <button type="button" class="btn btn-primary btn-sm" onclick="paFiltersModal.close()">Done</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Share: caption from the summary cards, curve image copied to the clipboard. -->
+<dialog id="paShareModal" class="modal">
+    <div class="modal-box max-w-lg">
+        <h3 class="font-bold text-lg mb-1">Share P&amp;L</h3>
+        <p class="text-sm text-base-content/60 mb-3">Edit your caption, then post to X.</p>
+        <textarea id="paShareText" class="textarea textarea-bordered w-full h-44 font-mono text-sm" oninput="paShareCount()"></textarea>
+        <div class="flex justify-end mt-1">
+            <span id="paShareCount" class="text-xs text-base-content/50"></span>
+        </div>
+        <p class="text-xs text-base-content/60 mt-2 mb-1">Add more lines from the cards (this rebuilds the caption):</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1">
+            <label class="label cursor-pointer gap-2 p-0"><input type="checkbox" class="checkbox checkbox-xs" data-share-extra="maxdd" onchange="paShareRefresh()"><span class="label-text text-xs">Max drawdown</span></label>
+            <label class="label cursor-pointer gap-2 p-0"><input type="checkbox" class="checkbox checkbox-xs" data-share-extra="wins" onchange="paShareRefresh()"><span class="label-text text-xs">Win days</span></label>
+            <label class="label cursor-pointer gap-2 p-0"><input type="checkbox" class="checkbox checkbox-xs" data-share-extra="pf" onchange="paShareRefresh()"><span class="label-text text-xs">Profit factor</span></label>
+            <label class="label cursor-pointer gap-2 p-0"><input type="checkbox" class="checkbox checkbox-xs" data-share-extra="avg" onchange="paShareRefresh()"><span class="label-text text-xs">Average win / loss day</span></label>
+            <label class="label cursor-pointer gap-2 p-0"><input type="checkbox" class="checkbox checkbox-xs" data-share-extra="bw" onchange="paShareRefresh()"><span class="label-text text-xs">Best / worst day</span></label>
+        </div>
+        <p id="paShareImageHint" class="text-xs text-base-content/50 mt-3">Preparing chart image...</p>
+        <div class="modal-action flex-wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="paShareModal.close()">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="paShareToX()">X (Twitter)</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>

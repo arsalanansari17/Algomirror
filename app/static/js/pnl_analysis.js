@@ -199,6 +199,7 @@
         renderCurve();
         renderStrategies();
         renderBreakdown();
+        $('paShareBtn').disabled = false;
     }
 
     function renderNotice() {
@@ -282,17 +283,35 @@
             (sub ? '<div class="text-xs text-muted-foreground mt-1">' + sub + '</div>' : '') + '</div>';
     }
 
-    function renderSummary() {
+    // The numbers behind the summary cards, shared with the Share caption so the
+    // post can never disagree with what the cards show.
+    function summaryNumbers() {
         var m = S.model;
         var s = m.series;
-        var summary = PM.stats(s.dates, s.total);
         var cum = PM.cumulative(s.total);
-        var dd = PM.drawdown(s.dates, cum).max;
-        var now = PM.currentDrawdown(s.dates, cum);
         var type = typeValue();
         var realized = m.split.realized;
         var unrealized = m.split.unrealized;
-        var net = type === 'realized' ? realized : type === 'unrealized' ? (unrealized || 0) : realized + (unrealized || 0);
+        return {
+            type: type,
+            realized: realized,
+            unrealized: unrealized,
+            summary: PM.stats(s.dates, s.total),
+            dd: PM.drawdown(s.dates, cum).max,
+            now: PM.currentDrawdown(s.dates, cum),
+            net: type === 'realized' ? realized : type === 'unrealized' ? (unrealized || 0) : realized + (unrealized || 0)
+        };
+    }
+
+    function renderSummary() {
+        var n = summaryNumbers();
+        var summary = n.summary;
+        var dd = n.dd;
+        var now = n.now;
+        var type = n.type;
+        var realized = n.realized;
+        var unrealized = n.unrealized;
+        var net = n.net;
         var netLabel = type === 'realized' ? 'Net realized P&amp;L' : type === 'unrealized' ? 'Unrealized P&amp;L' : 'Net P&amp;L (realized + unrealized)';
 
         var netCard = card(netLabel, '<div class="text-3xl font-bold ' + cls(net) + '">' + money(net) + '</div>',
@@ -346,6 +365,50 @@
         return lines;
     }
 
+    function curveChartOptions(width, height) {
+        var p = palette();
+        return {
+            width: width,
+            height: height,
+            layout: {
+                background: { type: 'solid', color: 'transparent' },
+                textColor: p.text,
+                attributionLogo: false,
+                panes: { enableResize: true, separatorColor: p.axis, separatorHoverColor: p.axis }
+            },
+            grid: { vertLines: { visible: false }, horzLines: { color: p.grid } },
+            rightPriceScale: { borderColor: p.axis, scaleMargins: { top: 0.08, bottom: 0.08 } },
+            timeScale: { borderColor: p.axis },
+            crosshair: { vertLine: { labelVisible: false } },
+            localization: { priceFormatter: money }
+        };
+    }
+
+    // The lower pane: current drawdown (grey) and the deepest drawdown so far (dashed).
+    function addDrawdownPane(chart, dates, dd) {
+        var dark = isDark();
+        var ddColor = dark ? 'rgba(201, 200, 190, 0.85)' : 'rgba(82, 81, 78, 0.85)';
+        var ddSeries = chart.addSeries(LightweightCharts.BaselineSeries, {
+            baseValue: { type: 'price', price: 0 },
+            topLineColor: ddColor, topFillColor1: 'rgba(0, 0, 0, 0)', topFillColor2: 'rgba(0, 0, 0, 0)',
+            bottomLineColor: ddColor,
+            bottomFillColor1: dark ? 'rgba(201, 200, 190, 0.04)' : 'rgba(82, 81, 78, 0.04)',
+            bottomFillColor2: dark ? 'rgba(201, 200, 190, 0.3)' : 'rgba(82, 81, 78, 0.3)',
+            lineWidth: 2, priceLineVisible: false, lastValueVisible: false
+        }, 1);
+        ddSeries.setData(dates.map(function (date, i) { return { time: date, value: dd.series[i] }; }));
+        var mdd = PM.runningMaxDrawdown(dd.series);
+        var mddSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: dark ? 'rgba(230, 103, 103, 0.9)' : 'rgba(227, 73, 72, 0.9)',
+            lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+        }, 1);
+        mddSeries.setData(dates.map(function (date, i) { return { time: date, value: mdd[i] }; }));
+        var panes = chart.panes();
+        if (panes[0]) panes[0].setHeight(CURVE_PANE);
+        if (panes[1]) panes[1].setHeight(DRAWDOWN_PANE);
+        return { ddSeries: ddSeries, mddSeries: mddSeries };
+    }
+
     function renderCurve() {
         var m = S.model;
         var type = typeValue();
@@ -389,23 +452,7 @@
             });
         });
 
-        var p = palette();
-        var dark = isDark();
-        var chart = LightweightCharts.createChart(host, {
-            width: host.clientWidth,
-            height: host.clientHeight,
-            layout: {
-                background: { type: 'solid', color: 'transparent' },
-                textColor: p.text,
-                attributionLogo: false,
-                panes: { enableResize: true, separatorColor: p.axis, separatorHoverColor: p.axis }
-            },
-            grid: { vertLines: { visible: false }, horzLines: { color: p.grid } },
-            rightPriceScale: { borderColor: p.axis, scaleMargins: { top: 0.08, bottom: 0.08 } },
-            timeScale: { borderColor: p.axis },
-            crosshair: { vertLine: { labelVisible: false } },
-            localization: { priceFormatter: money }
-        });
+        var chart = LightweightCharts.createChart(host, curveChartOptions(host.clientWidth, host.clientHeight));
         var drawn = [];
         lines.forEach(function (line) {
             if (S.hiddenLines[line.name]) return;
@@ -416,26 +463,9 @@
             drawn.push({ series: s, name: line.name, color: line.color });
         });
 
-        var ddColor = dark ? 'rgba(201, 200, 190, 0.85)' : 'rgba(82, 81, 78, 0.85)';
-        var ddSeries = chart.addSeries(LightweightCharts.BaselineSeries, {
-            baseValue: { type: 'price', price: 0 },
-            topLineColor: ddColor, topFillColor1: 'rgba(0, 0, 0, 0)', topFillColor2: 'rgba(0, 0, 0, 0)',
-            bottomLineColor: ddColor,
-            bottomFillColor1: dark ? 'rgba(201, 200, 190, 0.04)' : 'rgba(82, 81, 78, 0.04)',
-            bottomFillColor2: dark ? 'rgba(201, 200, 190, 0.3)' : 'rgba(82, 81, 78, 0.3)',
-            lineWidth: 2, priceLineVisible: false, lastValueVisible: false
-        }, 1);
-        ddSeries.setData(series.dates.map(function (date, i) { return { time: date, value: dd.series[i] }; }));
-        var mdd = PM.runningMaxDrawdown(dd.series);
-        var mddSeries = chart.addSeries(LightweightCharts.LineSeries, {
-            color: dark ? 'rgba(230, 103, 103, 0.9)' : 'rgba(227, 73, 72, 0.9)',
-            lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
-        }, 1);
-        mddSeries.setData(series.dates.map(function (date, i) { return { time: date, value: mdd[i] }; }));
-
-        var panes = chart.panes();
-        if (panes[0]) panes[0].setHeight(CURVE_PANE);
-        if (panes[1]) panes[1].setHeight(DRAWDOWN_PANE);
+        var dds = addDrawdownPane(chart, series.dates, dd);
+        var ddSeries = dds.ddSeries;
+        var mddSeries = dds.mddSeries;
         chart.timeScale().fitContent();
 
         var tip = $('paCurveTooltip');
@@ -500,8 +530,21 @@
     }
 
     function paDownloadCurvePng() {
-        if (!S.curveChart || !S.model) return;
-        var shot = S.curveChart.takeScreenshot();
+        var canvas = buildCurveCanvas('P&L Analysis  ' + S.raw.start + ' to ' + S.raw.end);
+        if (canvas) downloadCanvas(canvas, 'PnL_Analysis_' + new Date().toISOString().slice(0, 10) + '.png');
+    }
+
+    // Title band + legend values + the chart itself, with the AlgoMirror
+    // watermark. Used by the Image button and the Share image.
+    // `shot` and `lines` default to the chart as drawn on the page (with the
+    // legend toggles applied); the Share image passes its own Total-only pair.
+    function buildCurveCanvas(title, shot, lines) {
+        if (!S.model) return null;
+        if (!shot) {
+            if (!S.curveChart) return null;
+            shot = S.curveChart.takeScreenshot();
+        }
+        if (!lines) lines = curveLines().filter(function (l) { return !S.hiddenLines[l.name]; });
         var band = 56;
         var out = document.createElement('canvas');
         out.width = shot.width;
@@ -512,10 +555,10 @@
         ctx.fillRect(0, 0, out.width, out.height);
         ctx.fillStyle = dark ? '#ffffff' : '#0b0b0b';
         ctx.font = 'bold 16px sans-serif';
-        ctx.fillText('P&L Analysis  ' + S.raw.start + ' to ' + S.raw.end, 12, 22);
+        ctx.fillText(title, 12, 22);
         ctx.font = '13px sans-serif';
         var x = 12;
-        curveLines().filter(function (l) { return !S.hiddenLines[l.name]; }).forEach(function (line) {
+        lines.forEach(function (line) {
             ctx.fillStyle = line.color;
             ctx.fillRect(x, 36, 10, 10);
             ctx.fillStyle = dark ? '#c3c2b7' : '#52514e';
@@ -531,7 +574,7 @@
         ctx.fillText('AlgoMirror', out.width / 2, band + shot.height / 2);
         ctx.restore();
         ctx.drawImage(shot, 0, band);
-        downloadCanvas(out, 'PnL_Analysis_' + new Date().toISOString().slice(0, 10) + '.png');
+        return out;
     }
 
     // ------------------------------------------------------------ strategies
@@ -874,6 +917,189 @@
             .then(function () { submitBtn.disabled = false; });
     }
 
+    // ------------------------------------------------------------ share
+    // Daily post caption built from the same numbers as the summary cards.
+    // Opens X's compose window with the text and copies the curve image to the
+    // clipboard (intent links can't carry an image, so the user pastes it).
+    var SHARE_LIMIT = 280;
+    var SEGMENT_TITLES = {
+        all: 'Combined', equity: 'Equity', fno: 'Futures & Options',
+        currency: 'Currency', commodity: 'Commodity', mutual_fund: 'Mutual Funds'
+    };
+    var SHARE_TAGS = {
+        equity: '#AlgoTrading #NSE',
+        fno: '#AlgoTrading #OptionSelling #Nifty'
+    };
+
+    // "+₹18,004" / "-₹26,274": explicit sign, whole rupees, Indian grouping.
+    function capMoney(value) {
+        var v = Math.round(Number(value) || 0);
+        return (v < 0 ? '-' : '+') + '₹' + Math.abs(v).toLocaleString('en-IN');
+    }
+
+    // 'YYYY-MM-DD' -> '5 May' or '5 May 2026'
+    function shareDate(iso, withYear) {
+        var p = String(iso).split('-');
+        var text = Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1];
+        return withYear ? text + ' ' + p[0] : text;
+    }
+
+    function shareExtraOn(id) {
+        var el = document.querySelector('[data-share-extra="' + id + '"]');
+        return !!(el && el.checked);
+    }
+
+    function shareTitle() {
+        var s = S.model.series;
+        var seg = segmentValue();
+        return (SEGMENT_TITLES[seg] || seg) + ' Algo | ' + shareDate(s.dates[s.dates.length - 1], true);
+    }
+
+    function buildShareCaption() {
+        if (!S.model || !S.model.series.dates.length) return '';
+        var s = S.model.series;
+        var n = summaryNumbers();
+        var last = s.dates.length - 1;
+        var netName = n.type === 'realized' ? 'Realized P&L' : n.type === 'unrealized' ? 'Unrealized P&L' : 'Net P&L';
+        var sameYear = S.raw.start.slice(0, 4) === s.dates[last].slice(0, 4);
+        // Only Equity has a daily mark-to-market curve; every other segment (and
+        // the Realized type) is built from closed trades, so say which it is.
+        var dayLabel = 'Day P&L';
+        if (!S.model.hasCurve || n.type === 'realized') dayLabel += ' (booked)';
+        else if (n.type === 'unrealized') dayLabel += ' (unrealised)';
+        var lines = [
+            shareTitle(),
+            '',
+            dayLabel + ': ' + capMoney(s.total[last]),
+            netName + ': ' + capMoney(n.net) + ' | ' + n.summary.activeDays + ' days (since ' + shareDate(S.raw.start, !sameYear) + ')',
+            'Current drawdown: ' + (n.now.atHigh ? 'none, at a new high' : capMoney(n.now.depth))
+        ];
+        var sm = n.summary;
+        if (shareExtraOn('maxdd')) lines.push('Max drawdown: ' + capMoney(n.dd.depth));
+        if (shareExtraOn('wins')) lines.push('Win days: ' + pct(sm.winRate) + ' (' + sm.winDays + ' up, ' + sm.lossDays + ' down)');
+        if (shareExtraOn('pf')) lines.push('Profit factor: ' + ratio(sm.profitFactor));
+        if (shareExtraOn('avg')) {
+            lines.push('Average win / loss day: ' + (sm.avgWinDay === null ? '-' : capMoney(sm.avgWinDay)) +
+                ' / ' + (sm.avgLossDay === null ? '-' : capMoney(sm.avgLossDay)));
+        }
+        if (shareExtraOn('bw')) {
+            lines.push('Best / worst day: ' + (sm.bestDay ? capMoney(sm.bestDay.value) : '-') +
+                ' / ' + (sm.worstDay ? capMoney(sm.worstDay.value) : '-'));
+        }
+        var tags = SHARE_TAGS[segmentValue()] || '#AlgoTrading';
+        lines.push('', tags);
+        return lines.join('\n');
+    }
+
+    function paShareCount() {
+        var len = $('paShareText').value.length;
+        var el = $('paShareCount');
+        el.textContent = len + ' / ' + SHARE_LIMIT;
+        el.classList.toggle('text-error', len > SHARE_LIMIT);
+    }
+
+    function paShareRefresh() {
+        $('paShareText').value = buildShareCaption();
+        paShareCount();
+    }
+
+    function nextPaint() {
+        return new Promise(function (resolve) {
+            var done = false;
+            function finish() { if (!done) { done = true; resolve(); } }
+            requestAnimationFrame(function () { requestAnimationFrame(finish); });
+            setTimeout(finish, 400);
+        });
+    }
+
+    // Total line plus the drawdown pane only, drawn in an off-screen chart so
+    // the image ignores the legend toggles and the Chart/Table view.
+    function shareChartShot() {
+        var series = S.model.series;
+        var cum = PM.cumulative(series.total);
+        var dd = PM.drawdown(series.dates, cum);
+        var total = curveLines()[0];
+        var host = document.createElement('div');
+        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:1100px;height:500px;';
+        document.body.appendChild(host);
+        var chart = LightweightCharts.createChart(host, curveChartOptions(1100, 500));
+        var s = chart.addSeries(LightweightCharts.LineSeries, {
+            color: total.color, lineWidth: total.width, priceLineVisible: false, lastValueVisible: false
+        }, 0);
+        s.setData(series.dates.map(function (date, i) { return { time: date, value: total.values[i] }; }));
+        addDrawdownPane(chart, series.dates, dd);
+        chart.timeScale().fitContent();
+        return nextPaint().then(function () {
+            try {
+                return chart.takeScreenshot();
+            } finally {
+                chart.remove();
+                document.body.removeChild(host);
+            }
+        });
+    }
+
+    function shareImageBlob() {
+        if (!S.model || !S.model.series.dates.length) return Promise.resolve(null);
+        return shareChartShot().then(function (shot) {
+            var canvas = buildCurveCanvas(shareTitle(), shot, [curveLines()[0]]);
+            if (!canvas) return null;
+            return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
+        }).catch(function (err) {
+            console.error('Share image failed:', err);
+            return null;
+        });
+    }
+
+    // navigator.clipboard.write() has to be called inside the click's
+    // user-activation window, so the pending blob goes in as a Promise.
+    function prepareShareImage() {
+        var hint = $('paShareImageHint');
+        var noChart = 'Could not prepare the chart image - use the Image button and attach it manually.';
+        var blobPromise = shareImageBlob();
+        if (!(navigator.clipboard && window.ClipboardItem)) {
+            blobPromise.then(function (blob) {
+                hint.textContent = blob
+                    ? 'Clipboard image copy is not supported in this browser - use the Image button and attach it manually.'
+                    : noChart;
+            });
+            return;
+        }
+        var failed = false;
+        var tracked = blobPromise.then(function (blob) {
+            if (!blob) failed = true;
+            return blob;
+        });
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': tracked })])
+            .then(function () {
+                hint.textContent = 'Image copied to your clipboard - paste it (Ctrl+V) into the compose window that opens.';
+            })
+            .catch(function (err) {
+                console.error('Clipboard write failed:', err);
+                hint.textContent = failed ? noChart : 'Could not copy the image automatically - use the Image button and attach it manually.';
+            });
+    }
+
+    function paOpenShare() {
+        if (!S.model) return;
+        var caption = buildShareCaption();
+        if (!caption) {
+            if (typeof showToast === 'function') showToast('No P&L days in this selection, nothing to share', 'warning');
+            return;
+        }
+        $('paShareText').value = caption;
+        paShareCount();
+        $('paShareImageHint').textContent = 'Preparing chart image...';
+        $('paShareModal').showModal();
+        prepareShareImage();
+    }
+
+    function paShareToX() {
+        var text = $('paShareText').value;
+        if (!text) return;
+        window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    }
+
     function init(cfg) {
         S.dataUrl = cfg.dataUrl;
         S.importUrl = cfg.importUrl;
@@ -914,5 +1140,9 @@
     window.paOnSymbolInput = paOnSymbolInput;
     window.paClearFilters = paClearFilters;
     window.paSubmitImport = paSubmitImport;
+    window.paOpenShare = paOpenShare;
+    window.paShareRefresh = paShareRefresh;
+    window.paShareCount = paShareCount;
+    window.paShareToX = paShareToX;
     window.onPnlAnalysisAccountFilterChange = onAccountFilterChange;
 })();
