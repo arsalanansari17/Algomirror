@@ -6,7 +6,7 @@
 {# Macro to format amount in Lakhs if >= 1L, otherwise show actual #}
 {% macro format_lakhs(amount) %}{% if amount >= 100000 %}{{ "%.2fL"|format(amount / 100000) }}{% else %}{{ "{:,.2f}".format(amount) }}{% endif %}{% endmacro %}
 
-{% block title %}Funds - AlgoMirror{% endblock %}
+{% block title %}Funds - SkyShieldEdge{% endblock %}
 
 {% block page_title %}Funds{% endblock %}
 

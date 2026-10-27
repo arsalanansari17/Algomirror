@@ -26,7 +26,7 @@ def render_report(payload, errors_summary, errors_recent, fmt):
     h2 = "## " if is_md else ""
 
     lines = []
-    lines.append(f"{h1}AlgoMirror System Report")
+    lines.append(f"{h1}SkyShieldEdge System Report")
     lines.append("")
     lines.append(_md_kv("Generated", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     lines.append("")

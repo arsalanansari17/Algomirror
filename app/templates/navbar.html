@@ -2,7 +2,7 @@
 Top navbar - structurally matches OpenAlgo's Navbar.tsx: a sticky, blurred
 top bar with a flat icon+label row for most pages, plus one "Reports"
 dropdown group (Tradebook + P&L) mirroring OpenAlgo's own Reports menu -
-AlgoMirror adopts OpenAlgo's UI specifically to look near-identical, so
+SkyShieldEdge adopts OpenAlgo's UI specifically to look near-identical, so
 this one group is a deliberate exception to the otherwise-flat nav
 (see project_algomirror_ui_redesign_plan.md for the original flat-nav
 redesign this still otherwise follows). A profile dropdown covers
@@ -44,8 +44,8 @@ secondary pages.
 
         <!-- Logo -->
         <a href="{{ url_for('main.dashboard') }}" class="flex items-center gap-2 mr-6 shrink-0">
-            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="AlgoMirror" class="h-8 w-8">
-            <span class="hidden font-semibold sm:inline-block">AlgoMirror</span>
+            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="SkyShieldEdge" class="h-8 w-8">
+            <span class="hidden font-semibold sm:inline-block">SkyShieldEdge</span>
         </a>
 
         <!-- Desktop nav: icon-only between md-xl so everything fits narrower
@@ -120,8 +120,8 @@ secondary pages.
 <div id="mobile-nav-panel" class="hidden fixed inset-y-0 left-0 z-[70] w-72 bg-base-100 border-r border-base-300 overflow-y-auto md:hidden">
     <div class="flex items-center justify-between px-4 h-14 border-b border-base-300">
         <a href="{{ url_for('main.dashboard') }}" class="flex items-center gap-2" onclick="toggleMobileNav()">
-            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="AlgoMirror" class="h-8 w-8">
-            <span class="font-semibold">AlgoMirror</span>
+            <img src="{{ url_for('static', filename='favicon/logo.svg') }}" alt="SkyShieldEdge" class="h-8 w-8">
+            <span class="font-semibold">SkyShieldEdge</span>
         </a>
         <button type="button" onclick="toggleMobileNav()" class="btn btn-ghost btn-sm btn-square" aria-label="Close menu">
             {{ close('h-5 w-5') }}

@@ -571,7 +571,7 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = dark ? 'rgba(166, 173, 187, 0.2)' : 'rgba(0, 0, 0, 0.15)';
-        ctx.fillText('AlgoMirror', out.width / 2, band + shot.height / 2);
+        ctx.fillText('SkyShieldEdge', out.width / 2, band + shot.height / 2);
         ctx.restore();
         ctx.drawImage(shot, 0, band);
         return out;
@@ -759,7 +759,7 @@
 
     function watermarkHtml() {
         return '<div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none text-base-content/15" style="z-index:0">' +
-            '<div class="text-center"><div style="font-family:Arial,sans-serif;font-weight:bold;font-size:36px">AlgoMirror</div>' +
+            '<div class="text-center"><div style="font-family:Arial,sans-serif;font-weight:bold;font-size:36px">SkyShieldEdge</div>' +
             '<div style="font-family:Arial,sans-serif;font-size:14px">Powered by OpenAlgo</div></div></div>';
     }
 
@@ -922,6 +922,7 @@
     // Opens X's compose window with the text and copies the curve image to the
     // clipboard (intent links can't carry an image, so the user pastes it).
     var SHARE_LIMIT = 280;
+    var SHARE_CHART_WIDTH = 1100;
     var SEGMENT_TITLES = {
         all: 'Combined', equity: 'Equity', fno: 'Futures & Options',
         currency: 'Currency', commodity: 'Commodity', mutual_fund: 'Mutual Funds'
@@ -1020,9 +1021,9 @@
         var dd = PM.drawdown(series.dates, cum);
         var total = curveLines()[0];
         var host = document.createElement('div');
-        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:1100px;height:500px;';
+        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + SHARE_CHART_WIDTH + 'px;height:500px;';
         document.body.appendChild(host);
-        var chart = LightweightCharts.createChart(host, curveChartOptions(1100, 500));
+        var chart = LightweightCharts.createChart(host, curveChartOptions(SHARE_CHART_WIDTH, 500));
         var s = chart.addSeries(LightweightCharts.LineSeries, {
             color: total.color, lineWidth: total.width, priceLineVisible: false, lastValueVisible: false
         }, 0);
@@ -1039,11 +1040,86 @@
         });
     }
 
+    function roundedRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    // The curve card as it looks on the page, without its buttons, hint line
+    // or tooltip: heading, a Total pill, the chart with its drawdown pane and
+    // watermark, and the footnote. Sizes are CSS pixels times k, where k maps
+    // the screenshot's own pixels back to the 1100px chart it was taken from.
+    function shareCardCanvas(shot, line) {
+        var k = shot.width / SHARE_CHART_WIDTH;
+        var chartH = shot.height / k;
+        var dark = isDark();
+        var c = dark
+            ? { page: '#0b0b0b', card: '#171717', border: '#2e2e2e', text: '#fafafa', muted: '#a3a3a3', wm: 'rgba(166, 173, 187, 0.2)' }
+            : { page: '#f4f4f5', card: '#ffffff', border: '#e4e4e7', text: '#0b0b0b', muted: '#71717a', wm: 'rgba(0, 0, 0, 0.12)' };
+        var margin = 20, pad = 20;
+        var cardW = SHARE_CHART_WIDTH + 2 * pad;
+        var chartTop = margin + pad + 54;
+        var footY = chartTop + chartH + 22;
+        var cardH = footY + 14 - margin;
+        var out = document.createElement('canvas');
+        out.width = Math.round((cardW + 2 * margin) * k);
+        out.height = Math.round((cardH + 2 * margin) * k);
+        var ctx = out.getContext('2d');
+        ctx.scale(k, k);
+        ctx.fillStyle = c.page;
+        ctx.fillRect(0, 0, out.width / k, out.height / k);
+        roundedRect(ctx, margin, margin, cardW, cardH, 10);
+        ctx.fillStyle = c.card;
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = c.border;
+        ctx.stroke();
+
+        var left = margin + pad;
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = c.text;
+        ctx.font = '600 16px sans-serif';
+        ctx.fillText($('paCurveTitle').textContent, left, margin + pad + 14);
+
+        ctx.font = '12px sans-serif';
+        var label = line.name;
+        var pillW = ctx.measureText(label).width + 34;
+        var pillY = margin + pad + 26;
+        roundedRect(ctx, left, pillY, pillW, 24, 12);
+        ctx.strokeStyle = c.border;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(left + 12, pillY + 12, 4, 0, Math.PI * 2);
+        ctx.fillStyle = line.color;
+        ctx.fill();
+        ctx.fillStyle = c.text;
+        ctx.fillText(label, left + 22, pillY + 16);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = c.wm;
+        ctx.font = 'bold 42px Arial, sans-serif';
+        ctx.fillText('SkyShieldEdge', left + SHARE_CHART_WIDTH / 2, chartTop + chartH / 2);
+        ctx.font = '16px Arial, sans-serif';
+        ctx.fillText('Powered by OpenAlgo', left + SHARE_CHART_WIDTH / 2, chartTop + chartH / 2 + 26);
+        ctx.textAlign = 'left';
+
+        ctx.drawImage(shot, 0, 0, shot.width, shot.height, left, chartTop, SHARE_CHART_WIDTH, chartH);
+
+        ctx.fillStyle = c.muted;
+        ctx.font = '12px sans-serif';
+        ctx.fillText('Lower pane: current drawdown from the running high (grey), and the deepest drawdown so far (dashed).', left, footY);
+        return out;
+    }
+
     function shareImageBlob() {
         if (!S.model || !S.model.series.dates.length) return Promise.resolve(null);
         return shareChartShot().then(function (shot) {
-            var canvas = buildCurveCanvas(shareTitle(), shot, [curveLines()[0]]);
-            if (!canvas) return null;
+            var canvas = shareCardCanvas(shot, curveLines()[0]);
             return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
         }).catch(function (err) {
             console.error('Share image failed:', err);

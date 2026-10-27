@@ -8,7 +8,7 @@ wrapping arbitrary children, so callers write the tag themselves:
 <button class="{{ ui.button() }}">Save</button>
 
 Two deliberate departures from the original shadcn source:
-- `dark:` variants are dropped - AlgoMirror switches themes via a
+- `dark:` variants are dropped - SkyShieldEdge switches themes via a
   `data-theme` attribute (see theme.js), not Tailwind's own `dark:` class/
   media-query variant, so those classes would silently respond to OS
   color-scheme instead of the app's toggle.

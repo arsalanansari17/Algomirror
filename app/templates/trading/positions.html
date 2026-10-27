@@ -12,7 +12,7 @@
 {% macro signed_currency(value, undefined_text='0.00') %}{% if value is not defined or value is none %}₹{{ undefined_text }}{% else %}{{ "+" if value >= 0 else "" }}₹{{ value|inr }}{% endif %}{% endmacro %}
 {% macro fmt_pct(value, undefined_text=none) %}{% if value is not defined or value is none %}{{ undefined_text if undefined_text is not none else "0.00%" }}{% else %}{{ "%.2f"|format(value) }}%{% endif %}{% endmacro %}
 
-{% block title %}Positions - AlgoMirror{% endblock %}
+{% block title %}Positions - SkyShieldEdge{% endblock %}
 
 {% block page_title %}Positions{% endblock %}
 

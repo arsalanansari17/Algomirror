@@ -16,7 +16,7 @@
 {% set MODE_ANALYZE_BADGE = BADGE_SHAPE ~ ' bg-amber-500 text-white border-transparent' %}
 {% set MODE_UNKNOWN_BADGE = BADGE_SHAPE ~ ' border-border text-muted-foreground' %}
 
-{% block title %}Dashboard - AlgoMirror{% endblock %}
+{% block title %}Dashboard - SkyShieldEdge{% endblock %}
 
 {% block content %}
 <div>
@@ -65,10 +65,10 @@
     </div>
 
     {% if strategy_engine_enabled %}
-    <!-- Reconciliation warning: positions open at broker but not tracked by AlgoMirror.
+    <!-- Reconciliation warning: positions open at broker but not tracked by SkyShieldEdge.
          Only meaningful when the strategy engine is on - otherwise every position is
          "untracked" by definition (placed by an external strategy engine), and Close All
-         would attempt to square off positions AlgoMirror doesn't own. -->
+         would attempt to square off positions SkyShieldEdge doesn't own. -->
     <div id="reconcileWarning" class="alert alert-warning shadow-lg mb-6" style="display: none;">
         <div class="flex-1">
             <h3 class="font-bold">Untracked open positions detected at broker</h3>
@@ -118,7 +118,7 @@
                 <div class="{{ card_title() }} text-2xl lg:text-4xl" id="total-strategy-pnl" data-pv="pnl">
                     <span class="loading loading-spinner loading-md"></span>
                 </div>
-                <div class="{{ card_description() }} text-xs">AlgoMirror tracked P&amp;L</div>
+                <div class="{{ card_description() }} text-xs">SkyShieldEdge tracked P&amp;L</div>
             </div>
         </div>
 
@@ -758,7 +758,7 @@ async function loadAccountModes() {
     }
 }
 
-// Load Strategy P&L (AlgoMirror tracked positions) - separate from broker M2M P&L
+// Load Strategy P&L (SkyShieldEdge tracked positions) - separate from broker M2M P&L
 async function loadStrategyPnL() {
     const accounts = {{ accounts_json|tojson }};
     let totalStrategyPnL = 0;
@@ -1082,7 +1082,7 @@ function deleteStrategy(strategyId, forceDelete = false) {
                                 <svg class="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                 </svg>
-                                Manually closed positions (outside AlgoMirror)
+                                Manually closed positions (outside SkyShieldEdge)
                             </li>
                             <li class="flex items-center gap-2">
                                 <svg class="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1159,7 +1159,7 @@ function showNotification(message, type) {
     setTimeout(() => toast.remove(), duration);
 }
 
-// Reconciliation: warn about positions open at the broker but not tracked by AlgoMirror
+// Reconciliation: warn about positions open at the broker but not tracked by SkyShieldEdge
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => (
         {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
@@ -1182,7 +1182,7 @@ async function loadPositionReconciliation() {
                 return `<div class="mt-2"><span class="font-semibold">${escapeHtml(a.account_name)}:</span>${rows}</div>`;
             }).join('');
             document.getElementById('reconcileWarningBody').innerHTML =
-                `${data.orphan_count} position(s) open at the broker are not tracked by AlgoMirror. ` +
+                `${data.orphan_count} position(s) open at the broker are not tracked by SkyShieldEdge. ` +
                 `Use Close All to square off every account at once.` + lines;
             warnEl.style.display = '';
         } else {

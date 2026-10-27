@@ -139,7 +139,7 @@ def register():
                 }
             )
 
-            flash('Registration successful! You are the administrator of this AlgoMirror instance. Please log in.', 'success')
+            flash('Registration successful! You are the administrator of this SkyShieldEdge instance. Please log in.', 'success')
             return redirect(url_for('auth.login'))
 
         except Exception as e:

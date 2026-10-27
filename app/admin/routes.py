@@ -72,7 +72,7 @@ def update_settings():
         # fresh on each request). The background services (Risk Manager,
         # Supertrend Exit, Order Poller) are only started/stopped at app
         # startup, so restart the service for that part to take effect.
-        flash(f'Strategy engine {state}. Restart the AlgoMirror service for background-service changes to take effect.', 'success')
+        flash(f'Strategy engine {state}. Restart the SkyShieldEdge service for background-service changes to take effect.', 'success')
     elif privacy_changed:
         log_activity('platform_settings_update', 'Privacy Mode categories updated')
         flash('Privacy Mode settings saved.', 'success')

@@ -1,12 +1,12 @@
 {% extends "layout.html" %}
 
-{% block title %}Platform Settings - AlgoMirror{% endblock %}
+{% block title %}Platform Settings - SkyShieldEdge{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl">
     <div class="mb-6">
         <h1 class="text-3xl font-bold">Platform Settings</h1>
-        <p class="text-base-content/70 mt-1">Feature toggles for this AlgoMirror deployment</p>
+        <p class="text-base-content/70 mt-1">Feature toggles for this SkyShieldEdge deployment</p>
     </div>
 
     <form method="POST" action="{{ url_for('admin.update_settings') }}" class="space-y-6">
@@ -18,9 +18,9 @@
                 <p class="text-base-content/70 text-sm">
                     Controls the strategy execution surface: Strategy Builder, Margin Calculator, Risk Monitor,
                     the Risk Manager / Supertrend Exit / Order Poller background services, and the broker-position
-                    reconciliation warning on the dashboard. Turn this off if you use AlgoMirror only to view
+                    reconciliation warning on the dashboard. Turn this off if you use SkyShieldEdge only to view
                     accounts whose trades are placed by an external strategy engine (e.g. your own bot/SDK) -
-                    otherwise every position not created by AlgoMirror's Strategy Builder gets flagged as
+                    otherwise every position not created by SkyShieldEdge's Strategy Builder gets flagged as
                     "untracked", and the dashboard's "Close All" action would attempt to close those positions.
                 </p>
 
@@ -33,7 +33,7 @@
                 </label>
 
                 <p class="text-xs text-base-content/50 mt-2">
-                    Nav items and the dashboard warning update immediately. Restart the AlgoMirror service
+                    Nav items and the dashboard warning update immediately. Restart the SkyShieldEdge service
                     (<code>sudo systemctl restart algomirror</code>) for the background-service change
                     (Risk Manager / Supertrend Exit / Order Poller) to take effect.
                 </p>

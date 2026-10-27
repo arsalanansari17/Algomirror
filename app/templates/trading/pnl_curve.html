@@ -2,7 +2,7 @@
 {% from 'macros/account_filter.html' import account_filter %}
 {% from 'macros/ui.html' import button, card, card_content %}
 
-{% block title %}P&L Plot - AlgoMirror{% endblock %}
+{% block title %}P&L Plot - SkyShieldEdge{% endblock %}
 
 {% block content %}
 <div id="pnlCurvePageWrap" class="space-y-4">
@@ -18,6 +18,11 @@
             {{ account_filter(accounts, [], 'trading.pnl_curve_page', on_change_js='onPnlAccountFilterChange') }}
             <span id="pnlCurveUpdatedAt" class="text-xs text-muted-foreground"></span>
             {% if accounts %}
+            <label class="flex items-center gap-2 text-sm cursor-pointer select-none"
+                   title="Off: the broker's own P&amp;L, as on the Positions page. On: today's M2M, where a position carried from a previous day is measured from yesterday's close.">
+                <span>Today's M2M</span>
+                <input type="checkbox" id="pnlCurveBasisToggle" class="toggle toggle-sm" onchange="onPnlBasisChange()">
+            </label>
             <button type="button" id="pnlCurveScreenshotBtn" onclick="takePnlScreenshot()" class="{{ button('outline', 'sm') }}">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -30,6 +35,12 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342a3 3 0 100-2.684m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 8.632a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
                 </svg>
                 Share
+            </button>
+            <button type="button" id="pnlCurveQuickPostBtn" onclick="quickPostToX()" title="Open X's compose window with today's P&amp;L caption prefilled - no image, just click Post there" class="{{ button('outline', 'sm') }}">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Post to X
             </button>
             <button type="button" id="pnlCurveRefreshBtn" onclick="loadPnlCurve()" class="{{ button('outline', 'sm') }}">
                 <svg id="pnlCurveRefreshIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -59,6 +70,7 @@
 
     <div id="pnlCurveError" class="hidden alert alert-error"></div>
     <div id="pnlCurveFailedAccountsWarning" class="hidden alert alert-warning"></div>
+    <div id="pnlCurveBasisNotice" class="hidden alert alert-warning"></div>
 
     <div id="pnlCurveContent" class="hidden">
         <div class="{{ card() }}">
@@ -70,7 +82,7 @@
                      centered watermark (see drawPnlChart). -->
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                     <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
-                        <div class="text-xs text-muted-foreground">Current MTM</div>
+                        <div class="text-xs text-muted-foreground">Current <span class="pnl-basis-label">P&amp;L</span></div>
                         <div id="pnlCurveCurrent" class="text-4xl font-bold font-mono"></div>
                     </div>
                     <div class="border border-border rounded-lg px-4 py-2.5 bg-card shadow-sm">
@@ -78,7 +90,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" style="color:#22c55e" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 18L9 11.25l4.306 4.306a11.95 11.95 0 015.814-5.518l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941" />
                             </svg>
-                            Max MTM
+                            Max <span class="pnl-basis-label">P&amp;L</span>
                         </div>
                         <div class="flex items-center gap-1.5">
                             <span id="pnlCurveMax" class="text-4xl font-bold font-mono" style="color:#22c55e"></span>
@@ -90,7 +102,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" style="color:#ef4444" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 6L9 12.75l4.306-4.306a11.95 11.95 0 015.814 5.518l2.74 1.22m0 0l-5.94 2.28m5.94-2.28l-2.28-5.941" />
                             </svg>
-                            Min MTM
+                            Min <span class="pnl-basis-label">P&amp;L</span>
                         </div>
                         <div class="flex items-center gap-1.5">
                             <span id="pnlCurveMin" class="text-4xl font-bold font-mono" style="color:#ef4444"></span>
@@ -169,13 +181,38 @@ let selectedPnlAccountIds = new Set();
 // *before* the sign, e.g. "₹-500.00", so checking that string for a
 // leading "-" never matches a loss).
 let lastRenderedCurrentPnl = 0;
+// Full numeric stat block (current/max+time/min+time/drawdown) for whatever
+// is currently rendered - the share caption is built from these numbers, not
+// by scraping the formatted display strings.
+let lastRenderedStats = null;
+// Off: the broker's own P&L (the default, as on Positions). On: today's M2M.
+// Remembered per browser, like OpenAlgo's own P&L Tracker.
+const PNL_BASIS_STORAGE_KEY = 'algomirror_pnlplot_basis';
+function currentPnlBasis() {
+    const toggle = document.getElementById('pnlCurveBasisToggle');
+    return toggle && toggle.checked ? 'm2m' : 'pnl';
+}
+function pnlBasisLabel(basis) { return basis === 'm2m' ? 'M2M' : 'P&L'; }
+function initPnlBasisToggle() {
+    const toggle = document.getElementById('pnlCurveBasisToggle');
+    if (!toggle) return;
+    try { toggle.checked = localStorage.getItem(PNL_BASIS_STORAGE_KEY) === 'm2m'; } catch (e) { /* not remembered */ }
+    document.querySelectorAll('.pnl-basis-label').forEach(el => { el.textContent = pnlBasisLabel(currentPnlBasis()); });
+}
+function onPnlBasisChange() {
+    try { localStorage.setItem(PNL_BASIS_STORAGE_KEY, currentPnlBasis()); } catch (e) { /* not remembered */ }
+    loadPnlCurve();
+}
+// Only the newest request may update the page: switching quickly can leave an
+// older response arriving last.
+let pnlLoadSeq = 0;
 // Single source of truth for P&L/drawdown colors - used for both the chart
 // series AND the stat numbers, so they're never allowed to drift apart the
 // way DaisyUI's themed text-success/text-error classes did (that theme's
 // "success" token isn't the same green as the chart's hardcoded line color).
 const PNL_GREEN = '#22c55e';
 const PNL_RED = '#ef4444';
-const PNL_DRAWDOWN_COLOR = '#f000b8';
+const PNL_DRAWDOWN_COLOR = '#f59e0b';
 // Captured from the DOM (already correctly HTML-entity-decoded by the
 // browser) instead of re-embedding the Jinja value into a JS string, which
 // would double-escape "&" into the literal text "&amp;".
@@ -274,6 +311,7 @@ async function loadPnlCurve() {
     const refreshLabel = document.getElementById('pnlCurveRefreshLabel');
     const screenshotBtn = document.getElementById('pnlCurveScreenshotBtn');
     const shareBtn = document.getElementById('pnlCurveShareBtn');
+    const quickPostBtn = document.getElementById('pnlCurveQuickPostBtn');
 
     loadingEl.classList.remove('hidden');
     errorEl.classList.add('hidden');
@@ -288,14 +326,32 @@ async function loadPnlCurve() {
     // mid-load just captures an empty-looking page.
     screenshotBtn.disabled = true;
     shareBtn.disabled = true;
+    quickPostBtn.disabled = true;
 
     try {
-        const response = await fetch('{{ url_for("trading.pnl_combined") }}');
+        const seq = ++pnlLoadSeq;
+        const requestedBasis = currentPnlBasis();
+        const response = await fetch('{{ url_for("trading.pnl_combined") }}?basis=' + requestedBasis);
         const result = await response.json();
+        if (seq !== pnlLoadSeq) return;
         if (result.status !== 'success') {
             throw new Error(result.message || 'Failed to load P&L data');
         }
         lastPnlData = result.data;
+        // Label what was actually delivered: an account whose OpenAlgo could not
+        // build the curve exactly falls back to a local reconstruction.
+        const delivered = lastPnlData.basis_delivered || requestedBasis;
+        const labelBasis = (delivered === 'pnl' || delivered === 'm2m') ? delivered : requestedBasis;
+        document.querySelectorAll('.pnl-basis-label').forEach(el => { el.textContent = pnlBasisLabel(labelBasis); });
+        const basisNoticeEl = document.getElementById('pnlCurveBasisNotice');
+        if (delivered !== requestedBasis) {
+            basisNoticeEl.textContent = delivered === 'legacy'
+                ? `The ${pnlBasisLabel(requestedBasis)} curve could not be worked out exactly for every account, so a local reconstruction is shown for some of them.`
+                : `The accounts are not all on the same basis (${pnlBasisLabel(requestedBasis)} was requested).`;
+            basisNoticeEl.classList.remove('hidden');
+        } else {
+            basisNoticeEl.classList.add('hidden');
+        }
         contentEl.classList.remove('hidden');
         renderForSelection();
         const t = formatIstTime(Math.floor(Date.now() / 1000));
@@ -310,6 +366,8 @@ async function loadPnlCurve() {
             failedAccountsEl.textContent = `Could not fetch data for: ${failedAccounts.join(', ')} - the totals below don't include ${failedAccounts.length > 1 ? 'these accounts' : 'this account'} and may understate your actual P&L.`;
             failedAccountsEl.classList.remove('hidden');
         }
+
+        autoOpenXComposeIfRequested();
     } catch (e) {
         errorEl.textContent = e.message || 'Failed to load P&L data';
         errorEl.classList.remove('hidden');
@@ -320,6 +378,7 @@ async function loadPnlCurve() {
         refreshLabel.textContent = 'Refresh';
         screenshotBtn.disabled = false;
         shareBtn.disabled = false;
+        quickPostBtn.disabled = false;
     }
 }
 
@@ -361,7 +420,7 @@ async function takePnlScreenshot() {
         return;
     }
 
-    const excludedIds = ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'];
+    const excludedIds = ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveQuickPostBtn', 'pnlCurveRefreshBtn'];
 
     btn.disabled = true;
     // html2canvas captures exactly target's own box, not the padding its
@@ -400,7 +459,7 @@ async function takePnlScreenshot() {
 }
 
 // Twitter/X's standard free-tier compose limit. We have a paid account with
-// no limit, but this feature is meant to be upstreamed to other AlgoMirror
+// no limit, but this feature is meant to be upstreamed to other SkyShieldEdge
 // users who may not, so the counter warns before they hit a silent
 // truncation/rejection at post time.
 const PNL_SHARE_CHAR_LIMIT = 280;
@@ -425,24 +484,68 @@ function updatePnlShareCharCount() {
     countEl.classList.toggle('text-base-content/50', len <= PNL_SHARE_CHAR_LIMIT);
 }
 
-// Simple fixed template - no per-index/stock hashtag detection (deliberately
-// out of scope for now). Reads the already-rendered "Current MTM" stat
-// directly so the caption always matches whatever's on screen, including
-// the currently-selected account.
+// Fixed hashtag line - no per-index/stock detection (deliberately out of
+// scope). Edit here if the traded index changes.
+const PNL_SHARE_HASHTAGS = '#AlgoTrading #OptionSelling #Nifty';
+
+// "+₹4,387.50" / "-₹8,394.75": sign first, Indian digit grouping.
+function formatSignedRupeeForCaption(value) {
+    const sign = value < 0 ? '-' : '+';
+    return `${sign}₹${Math.abs(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Date + day's MTM, built from the numeric stats of whatever is currently
+// rendered (including the selected account). Max MTM / Max Drawdown were
+// dropped from the caption on purpose; daily/monthly ROI, green/red day
+// counts and current drawdown % are planned as the next lines. No narrative
+// line: it can't be derived from P&L data, so it's left for the compose
+// window (the blank line above the hashtags) where it can be typed in.
 function buildDefaultPnlShareCaption() {
+    if (!lastRenderedStats) return '';
     const istOffsetMs = 5.5 * 60 * 60 * 1000;
     const istDate = new Date(Date.now() + istOffsetMs);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dateStr = `${istDate.getUTCDate()} ${months[istDate.getUTCMonth()]} ${istDate.getUTCFullYear()}`;
+    const dateStr = `${String(istDate.getUTCDate()).padStart(2, '0')} ${months[istDate.getUTCMonth()]} ${istDate.getUTCFullYear()}`;
 
-    const currentText = (document.getElementById('pnlCurveCurrent').textContent || '').trim();
-    const resultLine = lastRenderedCurrentPnl < 0
-        ? `🔴 Loss booked: ${currentText}`
-        : lastRenderedCurrentPnl > 0
-        ? `✅ Profit booked: ${currentText}`
-        : `➖ Flat day: ${currentText}`;
+    return [
+        `📅 ${dateStr}`,
+        `💰 MTM: ${formatSignedRupeeForCaption(lastRenderedStats.current)}`,
+        '',
+        PNL_SHARE_HASHTAGS,
+    ].join('\n');
+}
 
-    return `📅 ${dateStr}\n\n${resultLine}\n\nNot a recommendation. Just sharing my journey.\n\n#AlgoTrading #OptionsTrading @openalgoHQ #AlgoMirror`;
+// One click instead of Share -> modal -> X: opens X's compose window with the
+// caption prefilled. No image (intent links can't carry one), so there's no
+// clipboard step either - just click Post in the window that opens.
+function quickPostToX() {
+    const contentEl = document.getElementById('pnlCurveContent');
+    if (!contentEl || contentEl.classList.contains('hidden')) return;
+    const caption = buildDefaultPnlShareCaption();
+    if (!caption) return;
+    window.open(PNL_SHARE_INTENT_URLS.x(caption), '_blank', 'noopener');
+}
+
+// Bookmarkable one-tap flow: open /trading/pnl-curve?tweet=1, the page loads
+// the numbers, then navigates straight to X's compose window. A page-load
+// navigation (unlike window.open) isn't popup-blocked. Deliberately does
+// nothing when there's no P&L series (no trades today) or an account failed
+// to load (totals would be understated) - the normal page/banner shows
+// instead, so a bad day's numbers are never posted half-complete.
+function autoOpenXComposeIfRequested() {
+    if (new URLSearchParams(window.location.search).get('tweet') !== '1') return;
+    const series = (lastPnlData && lastPnlData.pnl_series) || [];
+    const failedAccounts = (lastPnlData && lastPnlData.failed_accounts) || [];
+    if (failedAccounts.length > 0) return;
+    if (series.length === 0) {
+        const errorEl = document.getElementById('pnlCurveError');
+        errorEl.textContent = 'No P&L data for today, nothing to post.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    const caption = buildDefaultPnlShareCaption();
+    if (!caption) return;
+    window.location.replace(PNL_SHARE_INTENT_URLS.x(caption));
 }
 
 // Same capture as before, factored out so it can be handed to
@@ -459,7 +562,7 @@ async function capturePnlSharePngBlob() {
             scale: 2,
             logging: false,
             useCORS: true,
-            ignoreElements: (el) => ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveRefreshBtn'].includes(el.id),
+            ignoreElements: (el) => ['accountFilterDropdown', 'pnlCurveScreenshotBtn', 'pnlCurveShareBtn', 'pnlCurveQuickPostBtn', 'pnlCurveRefreshBtn'].includes(el.id),
         });
         return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 1.0));
     } catch (e) {
@@ -620,6 +723,7 @@ function renderForSelection() {
     }
 
     lastRenderedCurrentPnl = stats.current;
+    lastRenderedStats = stats;
     const currentEl = document.getElementById('pnlCurveCurrent');
     currentEl.textContent = formatRupee(stats.current);
     currentEl.style.color = stats.current >= 0 ? PNL_GREEN : PNL_RED;
@@ -662,6 +766,11 @@ function drawPnlChart(series, drawdownSeries) {
             background: { color: 'transparent' },
             textColor: isDark ? '#a6adbb' : '#4b5563',
             attributionLogo: false,
+            panes: {
+                enableResize: true,
+                separatorColor: isDark ? 'rgba(166, 173, 187, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+                separatorHoverColor: isDark ? 'rgba(166, 173, 187, 0.4)' : 'rgba(0, 0, 0, 0.35)',
+            },
         },
         grid: {
             // Semi-transparent rather than an opaque hex, matching OpenAlgo's
@@ -695,7 +804,8 @@ function drawPnlChart(series, drawdownSeries) {
     // chartContainer.innerHTML = '' at the top of this function on redraw.
     const watermark = document.createElement('div');
     watermark.style.position = 'absolute';
-    watermark.style.top = '50%';
+    // Centred in the P&L pane (the top three quarters), not across both panes.
+    watermark.style.top = '37.5%';
     watermark.style.left = '50%';
     watermark.style.transform = 'translate(-50%, -50%)';
     watermark.style.textAlign = 'center';
@@ -706,11 +816,11 @@ function drawPnlChart(series, drawdownSeries) {
     // is already calibrated by DaisyUI for correct contrast against each
     // theme's own background, so one class reads right in both themes -
     // hand-picked rgba(166,173,187,0.2) (copied from OpenAlgo's exact
-    // values) turned out too low-contrast against AlgoMirror's specific
+    // values) turned out too low-contrast against SkyShieldEdge's specific
     // dark background shade, even though it read fine in light mode.
     watermark.className = 'text-base-content/15';
     watermark.innerHTML = `
-        <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px;">AlgoMirror</div>
+        <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 42px;">SkyShieldEdge</div>
         <div style="font-family: Arial, sans-serif; font-size: 16px;">Powered by OpenAlgo</div>
     `;
     chartContainer.appendChild(watermark);
@@ -727,16 +837,33 @@ function drawPnlChart(series, drawdownSeries) {
         bottomFillColor2: 'rgba(239, 68, 68, 0.28)',
         lineWidth: 2,
         priceScaleId: 'right',
-    });
+    }, 0);
     baselineSeries.setData(series.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
 
+    // Drawdown in its own pane, as on OpenAlgo's P&L Tracker: it is never
+    // positive and usually far smaller than the P&L, so sharing one scale
+    // flattened both. Baselined at zero so the fill hangs from break-even down
+    // to the curve and reads as depth.
     let drawdownLineSeries = null;
     if (drawdownSeries && drawdownSeries.length > 0) {
-        drawdownLineSeries = chart.addSeries(LightweightCharts.LineSeries, {
-            color: PNL_DRAWDOWN_COLOR, lineWidth: 1, priceScaleId: 'right',
+        drawdownLineSeries = chart.addSeries(LightweightCharts.BaselineSeries, {
+            baseValue: { type: 'price', price: 0 },
+            topLineColor: PNL_DRAWDOWN_COLOR,
+            topFillColor1: 'rgba(245, 158, 11, 0)',
+            topFillColor2: 'rgba(245, 158, 11, 0)',
+            bottomLineColor: PNL_DRAWDOWN_COLOR,
+            bottomFillColor1: 'rgba(245, 158, 11, 0.04)',
+            bottomFillColor2: 'rgba(245, 158, 11, 0.30)',
+            lineWidth: 2, priceScaleId: 'right',
             lastValueVisible: false, priceLineVisible: false,
-        });
+        }, 1);
         drawdownLineSeries.setData(drawdownSeries.map(p => ({ time: Math.floor(p.time / 1000), value: p.value })));
+        // P&L : drawdown = 3 : 1
+        const panes = chart.panes();
+        if (panes.length > 1) {
+            panes[0].setStretchFactor(3);
+            panes[1].setStretchFactor(1);
+        }
     }
 
     legendEl.innerHTML = `
@@ -811,6 +938,7 @@ new MutationObserver(() => {
 
 document.addEventListener('DOMContentLoaded', () => {
     {% if accounts %}
+    initPnlBasisToggle();
     loadPnlCurve();
     {% endif %}
 });
