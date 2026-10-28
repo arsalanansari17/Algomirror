@@ -101,11 +101,38 @@ def test_rows_the_book_does_not_fully_explain_keep_the_brokers_numbers():
         assert rows == before
 
 
-def test_closed_rows_and_other_contracts_are_left_alone():
-    closed = [pos(quantity=0, average_price=0.0)]
-    before = copy.deepcopy(closed)
-    assert apply_cost_basis(closed, [row([sl('NDS', -130, 59.85)])]) == 0
-    assert closed == before
+def test_closed_flagged_row_takes_the_realized_pnl_from_the_book():
+    # An exited carried leg: Kotak's pnl is only the day's slice off the overnight valuation
+    closed = [pos(quantity=0, average_price=0.0, pnl=-559.0)]
+    n = apply_cost_basis(closed, [row([sl('NDS', 0, 0.0, today=2210.5)])])
+    assert n == 1
+    assert closed[0]['pnl'] == 2210.5
+    assert closed[0]['broker_pnl'] == -559.0
+    assert closed[0]['average_price'] == 0.0
+    assert closed[0]['average_price_basis'] == 'strategy_book'
+    # two strategies closed it: their realized results add up
+    two = [pos(quantity=0, average_price=0.0)]
+    apply_cost_basis(two, [row([sl('A', 0, 0.0, today=300.0), sl('B', 0, 0.0, today=-50.0)])])
+    assert two[0]['pnl'] == 250.0
+
+
+def test_closed_flagged_row_is_left_alone_when_the_book_cannot_explain_it():
+    for r in (
+        row([]),                                                      # book has nothing on it
+        row([sl('Unattributed', 0, 0.0, today=100.0)]),               # not attributed
+        row([sl('NDS', 0, 0.0, today=100.0)], mismatch=True),         # book disagrees with broker
+    ):
+        closed = [pos(quantity=0, average_price=0.0, pnl=-559.0)]
+        before = copy.deepcopy(closed)
+        assert apply_cost_basis(closed, [r]) == 0
+        assert closed == before
+    unflagged = [pos(quantity=0, average_price=0.0, pnl=-559.0)]
+    del unflagged[0]['average_price_basis']
+    assert apply_cost_basis(unflagged, [row([sl('NDS', 0, 0.0, today=2210.5)])]) == 0
+    assert unflagged[0]['pnl'] == -559.0
+
+
+def test_other_contracts_are_left_alone():
     other = [pos(symbol='OTHER')]
     assert apply_cost_basis(other, [row([sl('NDS', -130, 59.85)])]) == 0
     assert other[0]['average_price'] == 12.35
@@ -113,7 +140,7 @@ def test_closed_rows_and_other_contracts_are_left_alone():
 
 def test_helpers_handle_missing_input():
     assert has_carry_forward_valuation([pos()]) is True
-    assert has_carry_forward_valuation([pos(quantity=0)]) is False
+    assert has_carry_forward_valuation([pos(quantity=0)]) is True
     p = pos()
     del p['average_price_basis']
     assert has_carry_forward_valuation([p]) is False

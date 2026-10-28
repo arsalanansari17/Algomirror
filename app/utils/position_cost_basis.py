@@ -12,12 +12,17 @@ keeps the real fills per strategy, so a flagged row is corrected from it.
 The rule is deliberately narrow and mirrors OpenAlgo's own Positions page
 (frontend/src/lib/trading/strategyAttribution.ts, `applyCostBasis`):
 
-  * only rows the broker flagged, only open rows;
-  * only when the book fully explains the row: every open slice attributed,
-    all on the broker's side, adding up to exactly the broker quantity, and
-    the row not marked as a mismatch;
-  * anything else (no flag, closed, another broker, unexplained) is left
-    exactly as the broker reported it.
+  * only rows the broker flagged;
+  * an open row only when the book fully explains it: every open slice
+    attributed, all on the broker's side, adding up to exactly the broker
+    quantity, and the row not marked as a mismatch;
+  * a closed row (a carried leg that was exited today, e.g. an expiry-day
+    exit or an NDS roll) takes the P&L the strategies realized on it, because
+    Kotak's own figure for it is only that day's slice measured from the
+    overnight valuation, not the result since entry; same conditions: no
+    mismatch, at least one slice, every slice attributed;
+  * anything else (no flag, another broker, unexplained) is left exactly as
+    the broker reported it.
 
 Pure functions, no I/O - the route fetches the attribution and passes it in.
 """
@@ -34,11 +39,24 @@ def _f(value, default=0.0):
 
 
 def has_carry_forward_valuation(positions):
-    """True if at least one open row carries the broker's carry-forward flag."""
-    return any(
-        p.get('average_price_basis') == CARRY_FORWARD_BASIS and _f(p.get('quantity')) != 0
-        for p in positions
-    )
+    """True if at least one row, open or closed, carries the broker's carry-forward flag."""
+    return any(p.get('average_price_basis') == CARRY_FORWARD_BASIS for p in positions)
+
+
+def _apply_closed_row(pos, row):
+    """A flagged row that is flat now: its P&L is what the strategies realized
+    on the contract today (closing quantity x (exit - book average)), which is
+    measured from the real entry. Kotak's pnl for it is sell - buy with the
+    carried leg at its overnight valuation, i.e. only the day's move."""
+    if not row or row.get('mismatch'):
+        return False
+    slices = row.get('slices') or []
+    if not slices or any(not s.get('attributed') for s in slices):
+        return False
+    pos['broker_pnl'] = pos.get('pnl')
+    pos['pnl'] = round(sum(_f(s.get('today_realized_pnl')) for s in slices), 2)
+    pos['average_price_basis'] = STRATEGY_BOOK_BASIS
+    return True
 
 
 def apply_cost_basis(positions, attribution_rows):
@@ -48,7 +66,8 @@ def apply_cost_basis(positions, attribution_rows):
     how many rows were corrected. P&L is recomputed from the corrected average
     and the live price, plus what the strategies realized today on the
     contract; with no live price only the realized part is shown. Callers run
-    this before computing percentages.
+    this before computing percentages. A closed row keeps its zero average and
+    gets the realized P&L from the book.
     """
     by_key = {
         (r.get('symbol'), r.get('exchange'), r.get('product')): r
@@ -59,9 +78,11 @@ def apply_cost_basis(positions, attribution_rows):
         if pos.get('average_price_basis') != CARRY_FORWARD_BASIS:
             continue
         qty = _f(pos.get('quantity'))
-        if qty == 0:
-            continue
         row = by_key.get((pos.get('symbol'), pos.get('exchange'), pos.get('product')))
+        if qty == 0:
+            if _apply_closed_row(pos, row):
+                corrected += 1
+            continue
         if not row or row.get('mismatch'):
             continue
         slices = row.get('slices') or []

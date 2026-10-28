@@ -232,6 +232,7 @@ def tradebook():
 def positions():
     accounts = get_selected_accounts()
     positions_data = []
+    stale_accounts = []
 
     # Fetch positions from all accounts in parallel
     app = current_app._get_current_object()
@@ -288,6 +289,10 @@ def positions():
                 ltp = ltp_by_key.get((p.get('symbol'), p.get('exchange')))
                 if ltp:
                     p['ltp'] = ltp
+                    # OpenAlgo's Kotak mapping reports pnl 0.0 (not absent) for an
+                    # open row it had no price for; enrich_positions must
+                    # recompute that placeholder now that there is a price.
+                    p['_ltp_backfilled'] = True
         except Exception as e:
             current_app.logger.warning(f'Could not backfill missing LTP for account {account.id}: {e}')
 
@@ -328,6 +333,9 @@ def positions():
                 avg_price = float(position.get('average_price', 0))
                 ltp = float(position.get('ltp', 0))
                 raw_pnl = position.get('pnl')
+                backfilled = position.pop('_ltp_backfilled', False)
+                if backfilled and not float(raw_pnl or 0):
+                    raw_pnl = None
                 if raw_pnl is None and qty != 0 and avg_price != 0 and ltp != 0:
                     # Some brokers (Kotak) never return a pnl for positions at
                     # all - confirmed in broker/kotak/mapping/order_data.py
@@ -379,6 +387,9 @@ def positions():
             correct_carried_cost_basis(pos_list, account)
             enrich_positions(pos_list, account)
             positions_data.extend(pos_list)
+            # The broker call failed: these are the last saved rows, not live
+            # ones, so say so on the page instead of passing them off as current.
+            stale_accounts.append(account.account_name)
 
     # Calculate totals. Long/Short/Open counts (not Invested/Current Value)
     # since summing abs(qty * avg_price) across mixed long+short option legs
@@ -396,6 +407,7 @@ def positions():
     return render_template('trading/positions.html',
                          positions_data=positions_data,
                          total_pnl=total_pnl,
+                         stale_accounts=stale_accounts,
                          open_count=len(open_positions),
                          long_count=long_count,
                          short_count=short_count,
