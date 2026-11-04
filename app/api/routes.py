@@ -234,6 +234,57 @@ def get_account_funds(account_id):
             'message': f'Failed to get funds: {str(e)}'
         }, 500)
 
+@api_bp.route('/accounts/<int:account_id>/positions-pnl')
+@login_required
+@api_rate_limit()
+def get_account_positions_pnl(account_id):
+    """Account P&L summed from the position book - the same per-position
+    numbers (and the same corrections) the Positions page shows. The funds
+    endpoint's m2mrealized/m2munrealized come straight from the broker's
+    margin API and disagree with the position book (Zerodha's margins m2m
+    ignores some legs; Kotak has none), so the dashboard uses this instead."""
+    try:
+        from app.utils.openalgo_client import ExtendedOpenAlgoAPI
+        from app import db
+        from app.trading.routes import prepare_positions
+
+        account = TradingAccount.query.filter_by(
+            id=account_id, user_id=current_user.id, is_active=True
+        ).first()
+        if not account:
+            return no_cache_response({'status': 'error', 'message': 'Account not found'}, 404)
+
+        pos_list, stale = None, False
+        try:
+            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url, timeout=8)
+            response = client.positionbook()
+            if response and response.get('status') == 'success':
+                pos_list = response.get('data', []) or []
+        except Exception:
+            pos_list = None
+
+        if pos_list is None:
+            if not account.last_positions_data:
+                return no_cache_response({'status': 'error', 'message': 'Failed to fetch positions'}, 500)
+            pos_list, stale = account.last_positions_data, True
+
+        prepare_positions(pos_list, account)
+        if not stale:
+            try:
+                account.last_positions_data = pos_list
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        total = sum(float(p.get('pnl', 0) or 0) for p in pos_list)
+        return no_cache_response({
+            'status': 'success',
+            'data': {'account_id': account.id, 'pnl': round(total, 2), 'stale': stale}
+        })
+    except Exception as e:
+        return no_cache_response({'status': 'error', 'message': f'Failed to get positions P&L: {str(e)}'}, 500)
+
+
 @api_bp.route('/accounts/<int:account_id>/mode')
 @login_required
 @api_rate_limit()

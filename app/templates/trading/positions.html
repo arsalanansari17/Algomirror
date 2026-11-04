@@ -61,13 +61,6 @@
                 <span id="positionsFiltersDot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-destructive rounded-full"></span>
             </button>
 
-            {% if not single_account and accounts|length > 1 %}
-            <button id="mergePositionsBtn" onclick="toggleMergeView()" class="{{ button_toggle_base('sm') }} oa-toggle-inactive">
-                {{ icon_merge('h-4 w-4') }}
-                Merge Accounts
-            </button>
-            {% endif %}
-
             {% if accounts %}
             <a href="{{ url_for('trading.pnl_curve_page') }}" class="{{ button('outline', 'sm') }}">
                 {{ icon_pnl('h-4 w-4') }}
@@ -130,13 +123,13 @@
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Long</div>
-                <div class="{{ card_title() }} text-2xl text-green-600">{{ long_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-green-600" id="statLong">{{ long_count }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
             <div class="{{ card_header('pb-2') }}">
                 <div class="{{ card_description() }}">Short</div>
-                <div class="{{ card_title() }} text-2xl text-red-600">{{ short_count }}</div>
+                <div class="{{ card_title() }} text-2xl text-red-600" id="statShort">{{ short_count }}</div>
             </div>
         </div>
         <div class="{{ card() }}">
@@ -313,6 +306,18 @@
                 </label>
             </div>
         </div>
+
+        {% if not single_account and accounts|length > 1 %}
+        <div class="divider my-1"></div>
+
+        <div class="space-y-2 mb-4">
+            <label class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Accounts</label>
+            <button type="button" id="mergePositionsBtn" onclick="toggleMergeView()" class="{{ button_toggle_base('sm') }} oa-toggle-inactive">
+                {{ icon_merge('h-4 w-4') }}
+                Merge Accounts
+            </button>
+        </div>
+        {% endif %}
 
         <div class="divider my-1"></div>
 
@@ -547,6 +552,18 @@ function applyPositionsFilters() {
     const finalRows = Array.from(document.querySelectorAll('#positionsTbody tr:not(.group-header-row):not(.merge-hidden)'));
     const visible = finalRows.filter(row => row.dataset.filteredVisible === '1').length;
     const total = finalRows.length;
+
+    // Open / Long / Short cards follow the table as it's finally shown
+    // (filters + merge), same as Total P&L above. Merging nets quantities
+    // across accounts, so a long leg and a short leg of the same instrument
+    // become one net row (or none, if it nets to zero).
+    const openRows = finalRows.filter(row =>
+        row.dataset.filteredVisible === '1' && (parseFloat(row.dataset.qty) || 0) !== 0);
+    const setStat = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
+    setStat('statTotalPositions', openRows.length);
+    setStat('statLong', openRows.filter(r => parseFloat(r.dataset.qty) > 0).length);
+    setStat('statShort', openRows.filter(r => parseFloat(r.dataset.qty) < 0).length);
+
     const positionsCountEl = document.getElementById('positionsCount');
     if (positionsCountEl) {
         positionsCountEl.textContent = hasActive

@@ -227,6 +227,141 @@ def tradebook():
                          selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts())
 
+def _position_is_open(position):
+    """True only for positions with a non-zero net quantity.
+
+    Brokers keep returning squared-off positions with quantity 0 for the
+    rest of the trading day; those are closed and should not be shown.
+    """
+    try:
+        return float(position.get('quantity', 0)) != 0
+    except (ValueError, TypeError):
+        return False
+
+def backfill_missing_ltp(positions_list, account):
+    """Some brokers' positionbook API doesn't return a live LTP at all
+    (e.g. Kotak - the field is just 0 for every position from that
+    account, confirmed by reading broker/kotak/mapping/order_data.py
+    upstream), so Value/PnL% would otherwise be computed off a zero
+    price. Batch-fetch a real quote for just the affected symbols -
+    same multiquotes pattern the Holdings page already uses for Day's
+    P&L below. Best-effort: a quote failure just leaves ltp at
+    whatever the broker originally reported (usually 0).
+
+    Includes closed (quantity == 0) legs too, not just open ones - a
+    squared-off position's current LTP isn't needed for its own P&L
+    (already realized), but is still worth showing for reference, same
+    as OpenAlgo's real Positions page would for a broker that reports
+    LTP natively (Zerodha). Originally gated to qty != 0 only, since
+    that's all this function's own P&L-derivation caller needed at the
+    time - loosened once the gap was flagged as a real display gap in
+    its own right."""
+    missing = [
+        p for p in positions_list
+        if not float(p.get('ltp', 0) or 0)
+    ]
+    if not missing:
+        return
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        symbols = [{'symbol': p.get('symbol'), 'exchange': p.get('exchange')} for p in missing]
+        mq = client.multiquotes(symbols=symbols)
+        if not mq or mq.get('status') != 'success':
+            return
+        ltp_by_key = {}
+        for item in mq.get('results', []) or []:
+            data = item.get('data') or {}
+            ltp = data.get('ltp')
+            if ltp:
+                ltp_by_key[(item.get('symbol'), item.get('exchange'))] = float(ltp)
+        for p in missing:
+            ltp = ltp_by_key.get((p.get('symbol'), p.get('exchange')))
+            if ltp:
+                p['ltp'] = ltp
+                # OpenAlgo's Kotak mapping reports pnl 0.0 (not absent) for an
+                # open row it had no price for; enrich_positions must
+                # recompute that placeholder now that there is a price.
+                p['_ltp_backfilled'] = True
+    except Exception as e:
+        current_app.logger.warning(f'Could not backfill missing LTP for account {account.id}: {e}')
+
+def correct_carried_cost_basis(positions_list, account):
+    """Kotak reports a carried-over leg's previous settlement price as its
+    average (upstream marketcalls/openalgo#2061), which made Avg Price,
+    P&L and P&L % wrong for a position held from yesterday. OpenAlgo flags
+    such rows (average_price_basis = carry_forward_valuation) and its
+    strategy book holds the real entry average, so a flagged row is
+    replaced from /api/v1/pnl/attribution - only when the book fully
+    explains it (app/utils/position_cost_basis.py). Best-effort: any
+    failure leaves the broker's numbers, still flagged."""
+    if not has_carry_forward_valuation(positions_list):
+        return
+    try:
+        client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
+        resp = client.strategy_attribution('positions')
+        if resp.get('status') != 'success':
+            current_app.logger.warning(
+                f'Strategy attribution unavailable for account {account.id}: {resp.get("message")}')
+            return
+        rows = (resp.get('data') or {}).get('rows') or []
+        fixed = apply_cost_basis(positions_list, rows)
+        if fixed:
+            current_app.logger.info(
+                f'Account {account.id}: {fixed} carried position(s) show the strategy book average')
+    except Exception as e:
+        current_app.logger.warning(f'Could not correct carried cost basis for account {account.id}: {e}')
+
+def enrich_positions(positions_list, account):
+    """Add account info and calculate metrics for positions"""
+    for position in positions_list:
+        position['account_name'] = account.account_name
+        position['account_id'] = account.id
+        position['broker'] = account.broker_name
+        try:
+            qty = float(position.get('quantity', 0))
+            avg_price = float(position.get('average_price', 0))
+            ltp = float(position.get('ltp', 0))
+            raw_pnl = position.get('pnl')
+            backfilled = position.pop('_ltp_backfilled', False)
+            if backfilled and not float(raw_pnl or 0):
+                raw_pnl = None
+            if raw_pnl is None and qty != 0 and avg_price != 0 and ltp != 0:
+                # Some brokers (Kotak) never return a pnl for positions at
+                # all - confirmed in broker/kotak/mapping/order_data.py
+                # upstream, whose transform_positions_data has no 'pnl'
+                # key (Zerodha's does, straight from Kite). Derive it
+                # ourselves from qty/avg_price and the (possibly
+                # quote-backfilled) ltp instead of silently reading as 0.
+                raw_pnl = (ltp - avg_price) * qty
+                position['pnl'] = round(raw_pnl, 2)
+            pnl = float(raw_pnl or 0)
+            position['is_closed'] = (qty == 0)
+            if qty != 0 and avg_price != 0:
+                notional = abs(qty * avg_price)
+                position['invested_value'] = notional
+                position['current_value'] = abs(qty * ltp)
+                # Divide by absolute notional (not signed qty*avg_price) so the
+                # sign always matches the currency P&L - for a short leg,
+                # (ltp - avg_price) / avg_price is a price-change % that runs
+                # opposite to the actual (profitable-when-price-falls) return.
+                position['pnl_percentage'] = (pnl / notional * 100) if notional else 0
+        except (ValueError, TypeError):
+            position['is_closed'] = False
+            position['invested_value'] = 0
+            position['current_value'] = 0
+            position['pnl_percentage'] = 0
+
+
+def prepare_positions(pos_list, account):
+    """Shared by the Positions page and the dashboard P&L, so both show the
+    same per-position numbers (LTP backfill, derived Kotak P&L, carried
+    cost basis)."""
+    backfill_missing_ltp(pos_list, account)
+    correct_carried_cost_basis(pos_list, account)
+    enrich_positions(pos_list, account)
+
+
+
 @trading_bp.route('/positions')
 @login_required
 def positions():
@@ -238,136 +373,10 @@ def positions():
     app = current_app._get_current_object()
     results = fetch_broker_data_parallel(accounts, 'positionbook', app)
 
-    def _position_is_open(position):
-        """True only for positions with a non-zero net quantity.
-
-        Brokers keep returning squared-off positions with quantity 0 for the
-        rest of the trading day; those are closed and should not be shown.
-        """
-        try:
-            return float(position.get('quantity', 0)) != 0
-        except (ValueError, TypeError):
-            return False
-
-    def backfill_missing_ltp(positions_list, account):
-        """Some brokers' positionbook API doesn't return a live LTP at all
-        (e.g. Kotak - the field is just 0 for every position from that
-        account, confirmed by reading broker/kotak/mapping/order_data.py
-        upstream), so Value/PnL% would otherwise be computed off a zero
-        price. Batch-fetch a real quote for just the affected symbols -
-        same multiquotes pattern the Holdings page already uses for Day's
-        P&L below. Best-effort: a quote failure just leaves ltp at
-        whatever the broker originally reported (usually 0).
-
-        Includes closed (quantity == 0) legs too, not just open ones - a
-        squared-off position's current LTP isn't needed for its own P&L
-        (already realized), but is still worth showing for reference, same
-        as OpenAlgo's real Positions page would for a broker that reports
-        LTP natively (Zerodha). Originally gated to qty != 0 only, since
-        that's all this function's own P&L-derivation caller needed at the
-        time - loosened once the gap was flagged as a real display gap in
-        its own right."""
-        missing = [
-            p for p in positions_list
-            if not float(p.get('ltp', 0) or 0)
-        ]
-        if not missing:
-            return
-        try:
-            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
-            symbols = [{'symbol': p.get('symbol'), 'exchange': p.get('exchange')} for p in missing]
-            mq = client.multiquotes(symbols=symbols)
-            if not mq or mq.get('status') != 'success':
-                return
-            ltp_by_key = {}
-            for item in mq.get('results', []) or []:
-                data = item.get('data') or {}
-                ltp = data.get('ltp')
-                if ltp:
-                    ltp_by_key[(item.get('symbol'), item.get('exchange'))] = float(ltp)
-            for p in missing:
-                ltp = ltp_by_key.get((p.get('symbol'), p.get('exchange')))
-                if ltp:
-                    p['ltp'] = ltp
-                    # OpenAlgo's Kotak mapping reports pnl 0.0 (not absent) for an
-                    # open row it had no price for; enrich_positions must
-                    # recompute that placeholder now that there is a price.
-                    p['_ltp_backfilled'] = True
-        except Exception as e:
-            current_app.logger.warning(f'Could not backfill missing LTP for account {account.id}: {e}')
-
-    def correct_carried_cost_basis(positions_list, account):
-        """Kotak reports a carried-over leg's previous settlement price as its
-        average (upstream marketcalls/openalgo#2061), which made Avg Price,
-        P&L and P&L % wrong for a position held from yesterday. OpenAlgo flags
-        such rows (average_price_basis = carry_forward_valuation) and its
-        strategy book holds the real entry average, so a flagged row is
-        replaced from /api/v1/pnl/attribution - only when the book fully
-        explains it (app/utils/position_cost_basis.py). Best-effort: any
-        failure leaves the broker's numbers, still flagged."""
-        if not has_carry_forward_valuation(positions_list):
-            return
-        try:
-            client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
-            resp = client.strategy_attribution('positions')
-            if resp.get('status') != 'success':
-                current_app.logger.warning(
-                    f'Strategy attribution unavailable for account {account.id}: {resp.get("message")}')
-                return
-            rows = (resp.get('data') or {}).get('rows') or []
-            fixed = apply_cost_basis(positions_list, rows)
-            if fixed:
-                current_app.logger.info(
-                    f'Account {account.id}: {fixed} carried position(s) show the strategy book average')
-        except Exception as e:
-            current_app.logger.warning(f'Could not correct carried cost basis for account {account.id}: {e}')
-
-    def enrich_positions(positions_list, account):
-        """Add account info and calculate metrics for positions"""
-        for position in positions_list:
-            position['account_name'] = account.account_name
-            position['account_id'] = account.id
-            position['broker'] = account.broker_name
-            try:
-                qty = float(position.get('quantity', 0))
-                avg_price = float(position.get('average_price', 0))
-                ltp = float(position.get('ltp', 0))
-                raw_pnl = position.get('pnl')
-                backfilled = position.pop('_ltp_backfilled', False)
-                if backfilled and not float(raw_pnl or 0):
-                    raw_pnl = None
-                if raw_pnl is None and qty != 0 and avg_price != 0 and ltp != 0:
-                    # Some brokers (Kotak) never return a pnl for positions at
-                    # all - confirmed in broker/kotak/mapping/order_data.py
-                    # upstream, whose transform_positions_data has no 'pnl'
-                    # key (Zerodha's does, straight from Kite). Derive it
-                    # ourselves from qty/avg_price and the (possibly
-                    # quote-backfilled) ltp instead of silently reading as 0.
-                    raw_pnl = (ltp - avg_price) * qty
-                    position['pnl'] = round(raw_pnl, 2)
-                pnl = float(raw_pnl or 0)
-                position['is_closed'] = (qty == 0)
-                if qty != 0 and avg_price != 0:
-                    notional = abs(qty * avg_price)
-                    position['invested_value'] = notional
-                    position['current_value'] = abs(qty * ltp)
-                    # Divide by absolute notional (not signed qty*avg_price) so the
-                    # sign always matches the currency P&L - for a short leg,
-                    # (ltp - avg_price) / avg_price is a price-change % that runs
-                    # opposite to the actual (profitable-when-price-falls) return.
-                    position['pnl_percentage'] = (pnl / notional * 100) if notional else 0
-            except (ValueError, TypeError):
-                position['is_closed'] = False
-                position['invested_value'] = 0
-                position['current_value'] = 0
-                position['pnl_percentage'] = 0
-
     for account, response in results:
         if response and response.get('status') == 'success':
             pos_list = response.get('data', [])
-            backfill_missing_ltp(pos_list, account)
-            correct_carried_cost_basis(pos_list, account)
-            enrich_positions(pos_list, account)
+            prepare_positions(pos_list, account)
             # Keep squared-off (quantity 0) rows too - shown dimmed/"Closed" in
             # the template - so today's realized P&L from a closed position
             # doesn't just disappear from the page and from Total P&L below.
@@ -383,9 +392,7 @@ def positions():
         elif account.last_positions_data:
             # Use cached data if API fails
             pos_list = account.last_positions_data
-            backfill_missing_ltp(pos_list, account)
-            correct_carried_cost_basis(pos_list, account)
-            enrich_positions(pos_list, account)
+            prepare_positions(pos_list, account)
             positions_data.extend(pos_list)
             # The broker call failed: these are the last saved rows, not live
             # ones, so say so on the page instead of passing them off as current.

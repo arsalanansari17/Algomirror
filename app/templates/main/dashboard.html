@@ -633,6 +633,16 @@ async function loadAccountFunds() {
             .catch(error => ({ account, error, success: false }))
     );
 
+    // Account P&L comes from the position book (same numbers as the Positions
+    // page); the funds response's m2m fields are only a fallback.
+    const positionsPnl = {};
+    await Promise.all(accounts.map(account =>
+        fetch(`/api/accounts/${account.id}/positions-pnl?_t=${timestamp}`, { signal: AbortSignal.timeout(10000) })
+            .then(r => r.json())
+            .then(d => { if (d.status === 'success' && d.data) positionsPnl[account.id] = parseFloat(d.data.pnl) || 0; })
+            .catch(() => {})
+    ));
+
     const results = await Promise.allSettled(fetchPromises);
 
     // Process results - update BOTH funds AND P&L from same response
@@ -680,7 +690,7 @@ async function loadAccountFunds() {
                 // --- M2M P&L section (from same response, no extra API call) ---
                 const m2mRealized = parseFloat(funds.m2mrealized) || 0;
                 const m2mUnrealized = parseFloat(funds.m2munrealized) || 0;
-                const accountPnl = m2mRealized + m2mUnrealized;
+                const accountPnl = (account.id in positionsPnl) ? positionsPnl[account.id] : (m2mRealized + m2mUnrealized);
 
                 const pnlEl = document.getElementById(`pnl-account-${account.id}`);
                 if (pnlEl) {
