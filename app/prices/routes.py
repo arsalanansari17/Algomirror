@@ -56,8 +56,7 @@ def history():
 
     try:
         bars = price_store.get_bars(symbol, exchange, start, end)
-        if not price_store.is_covered(price_store.get_symbol(symbol, exchange), start, end):
-            price_store.note_request(symbol, exchange, start, end)
+        price_store.record_ask(symbol, exchange, start, end)
     except Exception:
         current_app.logger.exception("Price store read failed")
         return _error("The price store could not be read.", 500)

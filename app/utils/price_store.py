@@ -55,23 +55,27 @@ def is_covered(ps: PriceSymbol | None, start: date, end: date) -> bool:
     return ps.covered_from <= start and (end - ps.covered_to).days <= TAIL_SLACK_DAYS
 
 
-def note_request(symbol: str, exchange: str, start: date, end: date) -> bool:
-    """Record that a caller wanted [start, end] and the store could not fully
-    serve it. Widens any earlier wish; leaves a 'no_data' instrument alone.
-    Returns True when a wish was recorded."""
+def record_ask(symbol: str, exchange: str, start: date, end: date) -> bool:
+    """Note that a caller asked for [start, end]; the one call the endpoint makes.
+
+    Always remembers the latest end asked (asked_to). When the store cannot fully
+    serve the range it also records a wish for the filler, widening any earlier
+    one; a 'no_data' instrument is left alone. Returns True when a wish was
+    recorded.
+    """
     ps = get_symbol(symbol, exchange)
-    if ps is not None and ps.status == "no_data":
-        return False
     if ps is None:
         ps = PriceSymbol(symbol=symbol, exchange=exchange, status="ok")
         db.session.add(ps)
-    if is_covered(ps, start, end):
-        return False
-    ps.wanted_from = min(ps.wanted_from, start) if ps.wanted_from else start
-    ps.wanted_to = max(ps.wanted_to, end) if ps.wanted_to else end
-    ps.requested_at = _utcnow()
+    ps.asked_to = max(ps.asked_to, end) if ps.asked_to else end
+    wished = False
+    if ps.status != "no_data" and not is_covered(ps, start, end):
+        ps.wanted_from = min(ps.wanted_from, start) if ps.wanted_from else start
+        ps.wanted_to = max(ps.wanted_to, end) if ps.wanted_to else end
+        ps.requested_at = _utcnow()
+        wished = True
     db.session.commit()
-    return True
+    return wished
 
 
 def upsert_closes(

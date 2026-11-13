@@ -443,6 +443,12 @@ def create_app(config_name=None, start_background_services=True):
         from app.utils.background_service import option_chain_service
         option_chain_service.start_service()
 
+        # Evening fill of the shared daily-close store (15:45 IST, weekdays). Off unless
+        # PRICE_FILLER_ENABLED=1: it is the only thing here that calls a broker for history.
+        if os.environ.get('PRICE_FILLER_ENABLED') == '1':
+            from app.utils.price_filler import start_scheduler as start_price_filler
+            start_price_filler(app)
+
         if strategy_engine_enabled:
             # Initialize order status poller (Phase 2)
             from app.utils.order_status_poller import order_status_poller

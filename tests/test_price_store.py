@@ -118,8 +118,8 @@ def test_is_covered_tolerates_a_weekend_at_the_end_but_not_a_longer_gap(app):
 
 
 def test_a_wish_is_recorded_widened_and_cleared_once_covered(app):
-    assert price_store.note_request("ABC", "NSE", date(2026, 11, 2), date(2026, 11, 6))
-    assert price_store.note_request("ABC", "NSE", date(2026, 10, 1), date(2026, 11, 3))
+    assert price_store.record_ask("ABC", "NSE", date(2026, 11, 2), date(2026, 11, 6))
+    assert price_store.record_ask("ABC", "NSE", date(2026, 10, 1), date(2026, 11, 3))
     ps = price_store.get_symbol("ABC", "NSE")
     assert (ps.wanted_from, ps.wanted_to) == (date(2026, 10, 1), date(2026, 11, 6))
     assert [p.symbol for p in price_store.pending_wishes()] == ["ABC"]
@@ -132,7 +132,7 @@ def test_a_wish_is_recorded_widened_and_cleared_once_covered(app):
 def test_no_data_instruments_are_not_asked_for_again(app):
     price_store.mark_no_data("HEG", "NSE", "symbol not found")
 
-    assert not price_store.note_request("HEG", "NSE", START, END)
+    assert not price_store.record_ask("HEG", "NSE", START, END)
     assert price_store.pending_wishes() == []
     assert price_store.get_symbol("HEG", "NSE").status == "no_data"
 
@@ -228,3 +228,13 @@ def test_symbol_and_exchange_are_case_insensitive(app):
     _fill()
 
     assert _post(app, symbol="abc", exchange="nse").status_code == 200
+
+
+def test_the_latest_end_asked_is_remembered_even_when_fully_covered(app):
+    _fill()
+
+    _post(app, end_date="2026-11-05")
+    _post(app, end_date="2026-11-06")
+    _post(app, end_date="2026-11-04")
+
+    assert price_store.get_symbol("ABC", "NSE").asked_to == date(2026, 11, 6)

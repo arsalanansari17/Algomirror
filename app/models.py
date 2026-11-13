@@ -1089,6 +1089,9 @@ class PriceSymbol(db.Model):
     covered_to = db.Column(db.Date)
     wanted_from = db.Column(db.Date)
     wanted_to = db.Column(db.Date)
+    # Latest end date any caller asked for: an open position is asked up to today, a
+    # closed one only to its exit day, which is how the filler tells which need a daily bar.
+    asked_to = db.Column(db.Date)
     requested_at = db.Column(db.DateTime)
     checked_at = db.Column(db.DateTime)
     status = db.Column(db.String(16), default='ok', nullable=False)  # 'ok' | 'no_data'
