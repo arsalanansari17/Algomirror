@@ -243,6 +243,15 @@ def create_app(config_name=None, start_background_services=True):
     app.register_blueprint(tradingview_bp)  # url_prefix defined in blueprint (/tradingview)
     app.register_blueprint(admin_bp)  # url_prefix defined in blueprint (/admin)
 
+    # Shared daily-close store, read by every OpenAlgo instance for P&L valuation.
+    # Server-to-server with its own key (PRICE_STORE_API_KEY): no session, so no CSRF
+    # token, and a curve load reads hundreds of symbols in seconds.
+    from app.prices import prices_bp
+    from app.utils.rate_limiter import limiter as _limiter
+    app.register_blueprint(prices_bp)
+    csrf.exempt(prices_bp)
+    _limiter.exempt(prices_bp)
+
     # Diagnose blueprint — admin-only debugging UI + APIs at /diagnose
     from app.diagnose import diagnose_bp
     app.register_blueprint(diagnose_bp)

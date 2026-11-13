@@ -1049,3 +1049,50 @@ def load_user(user_id):
     if user.session_token != token:
         return None
     return user
+
+
+class DailyClose(db.Model):
+    """One official daily close for one instrument, stored once for every account.
+
+    Open lots are valued from daily closes, and the Zerodha-backed accounts no
+    longer have a broker that serves them. The prices do not depend on the
+    account, so they are fetched once (outside trading hours, from the primary
+    account) and every OpenAlgo instance reads them through /prices/api/v1/history.
+    Only days a symbol was held are kept.
+    """
+    __tablename__ = 'daily_closes'
+
+    symbol = db.Column(db.String(64), primary_key=True)
+    exchange = db.Column(db.String(16), primary_key=True)
+    trade_date = db.Column(db.Date, primary_key=True)
+    close = db.Column(db.Float, nullable=False)
+
+    def __repr__(self):
+        return f'<DailyClose {self.exchange}:{self.symbol} {self.trade_date} {self.close}>'
+
+
+class PriceSymbol(db.Model):
+    """What the price store holds, and wants, for one instrument.
+
+    covered_from..covered_to is the span the filler has fetched (a day inside it
+    with no row is a holiday, not a gap). wanted_from..wanted_to is the widest
+    span a caller asked for that the store could not fully serve; the filler
+    works through it after the market closes. status 'no_data' marks an
+    instrument no source knows (renamed, delisted), so it is reported and not
+    retried every day.
+    """
+    __tablename__ = 'price_symbols'
+
+    symbol = db.Column(db.String(64), primary_key=True)
+    exchange = db.Column(db.String(16), primary_key=True)
+    covered_from = db.Column(db.Date)
+    covered_to = db.Column(db.Date)
+    wanted_from = db.Column(db.Date)
+    wanted_to = db.Column(db.Date)
+    requested_at = db.Column(db.DateTime)
+    checked_at = db.Column(db.DateTime)
+    status = db.Column(db.String(16), default='ok', nullable=False)  # 'ok' | 'no_data'
+    note = db.Column(db.String(200))
+
+    def __repr__(self):
+        return f'<PriceSymbol {self.exchange}:{self.symbol} {self.covered_from}..{self.covered_to} {self.status}>'
