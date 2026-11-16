@@ -453,18 +453,29 @@ def _series_from_openalgo(data):
 
 
 def _openalgo_series(client, basis):
-    """(handled, series) from OpenAlgo's own intraday curve for this account.
-    handled is False when it could not answer (an OpenAlgo without the endpoint,
-    an error, or a curve it cannot build exactly), so the caller computes the
-    series itself."""
+    """(handled, series, delivered_basis) from OpenAlgo's own intraday curve for
+    this account. handled is False when it could not answer (an OpenAlgo without
+    the endpoint, an error, or a curve it cannot build exactly), so the caller
+    computes the series itself."""
     try:
         resp = client.pnl_intraday(basis)
     except Exception:
         logger.exception('OpenAlgo intraday P&L call failed')
-        return False, None
+        return False, None, None
     if not isinstance(resp, dict) or resp.get('status') != 'success' or resp.get('data') is None:
-        return False, None
-    return True, _series_from_openalgo(resp['data'])
+        return False, None, None
+    return True, _series_from_openalgo(resp['data']), resp['data'].get('basis') or basis
+
+
+def _delivered_summary(delivered_bases, requested):
+    """The basis every account's curve is on: the requested one when all agree,
+    'legacy' when any account fell back to the local reconstruction, else
+    'mixed'. With no accounts answering, the requested basis."""
+    if not delivered_bases:
+        return requested
+    if delivered_bases == {requested}:
+        return requested
+    return 'legacy' if 'legacy' in delivered_bases else 'mixed'
 
 
 def compute_combined_pnl(accounts, basis='pnl'):
@@ -488,16 +499,18 @@ def compute_combined_pnl(accounts, basis='pnl'):
             client = ExtendedOpenAlgoAPI(api_key=account.get_api_key(), host=account.host_url)
             # OpenAlgo's own curve first, so this plot and the Positions page
             # use one formula; the local reconstruction is the fallback.
-            handled, series = _openalgo_series(client, basis)
+            handled, series, delivered = _openalgo_series(client, basis)
             if handled:
-                return account, series, None
-            return account, compute_account_series(client), None
+                return account, series, None, delivered
+            # The local reconstruction is neither basis exactly: carried legs are
+            # seeded at the broker's average, which is close to M2M on Kotak.
+            return account, compute_account_series(client), None, 'legacy'
         except AccountPnlError as e:
             logger.error(f'Account {account.id} P&L unavailable: {e}')
-            return account, None, str(e)
+            return account, None, str(e), None
         except Exception:
             logger.exception(f'Error computing intraday P&L for account {account.id}')
-            return account, None, 'Unexpected error computing P&L'
+            return account, None, 'Unexpected error computing P&L', None
 
     if len(accounts) <= 1:
         results = [_one(accounts[0])] if accounts else []
@@ -508,7 +521,8 @@ def compute_combined_pnl(accounts, basis='pnl'):
     per_account = []
     failed_accounts = []
     combined = None
-    for account, series, error in results:
+    delivered_bases = set()
+    for account, series, error, delivered in results:
         current_value = float(series.iloc[-1]) if series is not None and len(series) else 0.0
         per_account.append({
             'account_id': account.id,
@@ -516,7 +530,10 @@ def compute_combined_pnl(accounts, basis='pnl'):
             'current_pnl': round(current_value, 2),
             'series': [],
             'error': error,
+            'basis': delivered,
         })
+        if delivered:
+            delivered_bases.add(delivered)
         if error:
             failed_accounts.append(account.account_name)
         if series is None or series.empty:
@@ -529,6 +546,7 @@ def compute_combined_pnl(accounts, basis='pnl'):
         'min_mtm': 0, 'min_mtm_time': None, 'max_drawdown': 0,
         'pnl_series': [], 'drawdown_series': [], 'per_account': per_account,
         'failed_accounts': failed_accounts,
+        'basis': basis, 'basis_delivered': _delivered_summary(delivered_bases, basis),
     }
     if combined is None:
         return empty_result
@@ -574,4 +592,6 @@ def compute_combined_pnl(accounts, basis='pnl'):
         'drawdown_series': drawdown_series,
         'per_account': per_account,
         'failed_accounts': failed_accounts,
+        'basis': basis,
+        'basis_delivered': _delivered_summary(delivered_bases, basis),
     }

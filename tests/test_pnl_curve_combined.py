@@ -84,6 +84,8 @@ def test_openalgo_curve_is_used_and_local_is_the_fallback():
     assert calls['local'] == 2  # accounts 2 and 3 fell back
     by_id = {e['account_id']: e for e in result['per_account']}
     assert by_id[1]['current_pnl'] == 25.0 and by_id[1]['error'] is None
+    assert by_id[1]['basis'] == 'm2m' and by_id[2]['basis'] == 'legacy'
+    assert result['basis'] == 'm2m' and result['basis_delivered'] == 'legacy'
     print('openalgo curve + fallback: ok')
 
 
