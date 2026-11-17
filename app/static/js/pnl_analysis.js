@@ -987,6 +987,12 @@
             lines.push('Best / worst day: ' + (sm.bestDay ? capMoney(sm.bestDay.value) : '-') +
                 ' / ' + (sm.worstDay ? capMoney(sm.worstDay.value) : '-'));
         }
+        // Booked vs open, on by default: a green day with a red net (or the other
+        // way round) reads oddly without it. Only meaningful when the curve carries
+        // both halves (Equity, net type), so skip it for booked-only segments.
+        if (shareExtraOn('split') && S.model.hasCurve && n.type === 'combined' && n.unrealized !== null) {
+            lines.push('', 'Booked ' + capMoney(n.realized) + ', open ' + capMoney(n.unrealized) + '.');
+        }
         var tags = SHARE_TAGS[segmentValue()] || '#AlgoTrading';
         lines.push('', tags);
         return lines.join('\n');
