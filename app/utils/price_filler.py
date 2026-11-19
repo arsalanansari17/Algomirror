@@ -41,8 +41,9 @@ MAX_CONSECUTIVE_FAILURES = 5
 REQUEST_TIMEOUT_SECONDS = 30
 # Days re-fetched before the stored end, so a late correction to a recent bar lands.
 OVERLAP_DAYS = 5
-# A top-up covers symbols asked about within this many days of today (a weekend).
-RECENT_ASK_DAYS = 3
+# A top-up covers symbols asked about within this many days of today (a long weekend
+# plus a day), so an open position stays current while nobody opens the pages.
+RECENT_ASK_DAYS = 5
 
 _run_lock = threading.Lock()
 
@@ -62,9 +63,12 @@ def plan_range(ps, today: date) -> tuple[date, date] | None:
             return ps.wanted_from, ps.wanted_to
         return max(ps.wanted_from, ps.covered_to - overlap), ps.wanted_to
     if ps.asked_to and ps.covered_to and ps.asked_to >= today - timedelta(days=RECENT_ASK_DAYS):
-        target = min(ps.asked_to, today)
-        if ps.covered_to < target:
-            return ps.covered_to - overlap, target
+        # Up to today, not up to the last day anyone asked for: nobody has to open a
+        # page for a held symbol to stay current (on 2026-11-18 the store stopped at
+        # the 17th because the last ask was the 17th, and the pages valued open lots
+        # at the 17th's close for two days).
+        if ps.covered_to < today:
+            return ps.covered_to - overlap, today
     return None
 
 
@@ -216,7 +220,13 @@ def run_scheduled(app) -> None:
             logger.warning("Price fill skipped: no active source account")
             return
         summary = run(make_fetcher(account))
-        logger.info("Price fill finished: %s", summary)
+        # Fields spelled out: a dict as the only logging argument is read as a
+        # mapping for %-formatting, which raised and lost this line.
+        text = ", ".join(f"{key}={value}" for key, value in summary.items())
+        if summary["errors"] or summary["stopped"]:
+            logger.warning("Price fill finished with problems: %s", text)
+        else:
+            logger.info("Price fill finished: %s", text)
 
 
 _scheduler = None

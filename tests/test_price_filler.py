@@ -165,6 +165,19 @@ def test_an_open_position_gets_a_daily_top_up_but_a_closed_one_does_not(app):
     assert fetcher.calls == [("OPEN", "NSE", date(2026, 11, 7), FRI)]
 
 
+def test_a_held_symbol_is_topped_up_to_today_even_if_nobody_asked_since(app):
+    # 2026-11-17/19: covered and last asked up to Tuesday, nobody opened a page on
+    # Wednesday or Thursday; the Thursday run must still fetch through Thursday.
+    tue, thu = date(2026, 11, 17), date(2026, 11, 19)
+    price_store.upsert_closes("HELD", "NSE", BARS, date(2026, 11, 2), tue)
+    price_store.record_ask("HELD", "NSE", date(2026, 11, 2), tue)
+    fetcher = Fetcher()
+
+    _run(fetcher, now=IST.localize(datetime(2026, 11, 19, 15, 50)))
+
+    assert fetcher.calls == [("HELD", "NSE", date(2026, 11, 12), thu)]
+
+
 def test_a_symbol_nobody_asks_about_any_more_is_not_topped_up(app):
     price_store.upsert_closes("OLD", "NSE", BARS, date(2026, 11, 2), date(2026, 11, 6))
     price_store.record_ask("OLD", "NSE", date(2026, 11, 2), date(2026, 11, 6))

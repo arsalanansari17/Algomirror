@@ -183,6 +183,9 @@
             if ((notes.missing_close || []).length) {
                 parts.push('no daily price for ' + brief(notes.missing_close) + ', held at cost');
             }
+            if (notes.prices_end) {
+                parts.push('daily prices only reach ' + notes.prices_end + ' on at least one account; the latest day is valued at live quotes and the days between are carried from that close');
+            }
             if (notes.calendar) parts.push('trading days: ' + notes.calendar);
             if (parts.length) showToast(parts.join('; '), 'warning');
         }

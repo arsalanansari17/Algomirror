@@ -93,6 +93,13 @@ def test_merge_curves_sums_by_date_and_strategy():
     print('merge_curves: ok')
 
 
+def test_merge_curves_keeps_the_earliest_prices_end_note():
+    a = dict(CURVE_1, notes={'prices_end': '2026-11-17'})
+    b = dict(CURVE_2, notes={'prices_end': '2026-11-13'})
+    assert merge_curves([a, b])['notes']['prices_end'] == '2026-11-13'
+    assert 'prices_end' not in merge_curves([CURVE_1, CURVE_2])['notes']
+
+
 def test_merge_curves_aligns_different_date_axes():
     short = {
         'dates': ['2026-05-05'],

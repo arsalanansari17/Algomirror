@@ -104,6 +104,10 @@ def merge_curves(curves):
                 if symbol not in notes[key]:
                     notes[key].append(symbol)
         calendar = calendar or n_.get('calendar')
+        # The earliest date any account's daily prices stop at: the page says so
+        # instead of showing a curve that quietly ends days before today.
+        if n_.get('prices_end') and (not notes.get('prices_end') or n_['prices_end'] < notes['prices_end']):
+            notes['prices_end'] = n_['prices_end']
     if calendar:
         notes['calendar'] = calendar
 
