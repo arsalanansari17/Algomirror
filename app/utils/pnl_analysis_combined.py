@@ -70,9 +70,16 @@ def merge_curves(curves):
 
     `curves` is a list of the data dicts /pnl/curve returned. The date axis is
     the union of every account's dates (accounts normally share one: the
-    trading days of the same range), and an account missing a date contributes
-    zero there. Both series are summed: realized is a daily amount, unrealized
-    a level, and the sum of levels is the level of the sum.
+    trading days of the same range). Both series are summed: realized is a daily
+    amount, unrealized a level, and the sum of levels is the level of the sum.
+
+    A date an account has no point for contributes zero to realized (nothing happened
+    that day) but NOT to unrealized: a level carries forward from the account's last
+    point. An account whose curve ends earlier than the others' (the archived acc2 ends
+    at the last stored close, the live accounts run to today) keeps its last level on
+    the later dates; counting it as zero dropped acc2's open CYIENT lot (about 6K) from
+    the Net unrealized, so the P&L page read 43,031 against 48,881 on Holdings
+    (24 Nov 2026). Before an account's first date its level is zero.
     """
     curves = [c for c in curves if c]
     if not curves:
@@ -89,11 +96,20 @@ def merge_curves(curves):
             merged = by_strategy.setdefault(
                 name, {'realized': [0.0] * n, 'unrealized': [0.0] * n}
             )
-            for kind in ('realized', 'unrealized'):
-                values = series.get(kind) or []
-                for date, i in own.items():
-                    if i < len(values):
-                        merged[kind][index[date]] += values[i]
+            values = series.get('realized') or []
+            for date, i in own.items():
+                if i < len(values):
+                    merged['realized'][index[date]] += values[i]
+            levels = series.get('unrealized') or []
+            first_own = min(own) if own else None
+            carried = 0.0
+            for position, date in enumerate(dates):
+                i = own.get(date)
+                if i is not None and i < len(levels):
+                    carried = levels[i]
+                    merged['unrealized'][position] += carried
+                elif first_own is not None and date > first_own:
+                    merged['unrealized'][position] += carried
 
     notes = {'orphan_sells': [], 'missing_close': [], 'missing_base': []}
     calendar = None

@@ -184,3 +184,36 @@ if __name__ == '__main__':
     test_account_without_the_curve_endpoint_is_reported_not_fatal()
     test_no_accounts()
     print('ALL OK')
+
+
+def test_merge_curves_carries_an_ended_accounts_unrealized_level_forward():
+    # the archived account's curve ends a day before the live accounts': its open lot must
+    # stay in the Net unrealized on the last date (24 Nov 2026: 43,031 instead of 48,881)
+    live = {
+        'dates': ['2026-11-20', '2026-11-23', '2026-11-24'],
+        'by_strategy': {'EBP': {'realized': [0, 0, 0], 'unrealized': [100.0, 200.0, 300.0]}},
+        'basis': 'actual_cost', 'base_date': None, 'notes': {},
+    }
+    archive = {
+        'dates': ['2026-11-20', '2026-11-23'],
+        'by_strategy': {'EBP': {'realized': [0, 5.0], 'unrealized': [50.0, 80.0]}},
+        'basis': 'actual_cost', 'base_date': None, 'notes': {},
+    }
+    merged = merge_curves([live, archive])
+    ebp = merged['by_strategy']['EBP']
+    assert ebp['unrealized'] == [150.0, 280.0, 380.0], ebp           # 300 + 80 carried, not 300
+    assert ebp['realized'] == [0, 5.0, 0], ebp                       # realized stays a daily amount
+
+
+def test_merge_curves_a_late_starting_account_is_zero_before_its_first_date():
+    early = {
+        'dates': ['2026-11-20', '2026-11-23'],
+        'by_strategy': {'S': {'realized': [0, 0], 'unrealized': [10.0, 20.0]}},
+        'basis': 'actual_cost', 'base_date': None, 'notes': {},
+    }
+    late = {
+        'dates': ['2026-11-23'],
+        'by_strategy': {'S': {'realized': [0], 'unrealized': [5.0]}},
+        'basis': 'actual_cost', 'base_date': None, 'notes': {},
+    }
+    assert merge_curves([early, late])['by_strategy']['S']['unrealized'] == [10.0, 25.0]
