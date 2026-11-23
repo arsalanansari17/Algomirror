@@ -57,6 +57,9 @@ class Config:
 
     
     # Session configuration
+    # Substring of the host_url of the account whose quotes supply prev_close
+    # for every holding's Day Chg % (acc4 = Kotak; free Kite key has no quotes)
+    QUOTE_SOURCE_HOST = os.environ.get('QUOTE_SOURCE_HOST', 'acc4.')
     SESSION_TYPE = os.environ.get('SESSION_TYPE') or 'filesystem'
     SESSION_FILE_DIR = os.environ.get('SESSION_FILE_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_session')
     SESSION_FILE_THRESHOLD = 500  # Max number of sessions to store

@@ -714,6 +714,40 @@ def holdings():
                 holding['pnl'] = 0
                 holding['pnlpercent'] = 0
 
+    # Previous close is market-level (identical across brokers), so take it
+    # from ONE designated account's quotes for every holding. Needed because
+    # a free Kite key (acc1) has no market-data permission, so its own
+    # multiquotes call is rejected and its holdings would get no Day Chg %.
+    # Per-account quotes remain the fallback if the source is unavailable.
+    prev_close_source = {}
+    source_host = (current_app.config.get('QUOTE_SOURCE_HOST') or '').lower()
+    if source_host:
+        source_account = next(
+            (a for a in current_user.get_active_accounts()
+             if source_host in (a.host_url or '').lower()), None)
+        wanted = {}
+        for account, response in results:
+            if response and response.get('status') == 'success':
+                hl = (response.get('data') or {}).get('holdings', []) or []
+            elif account.last_holdings_data and isinstance(account.last_holdings_data, dict):
+                hl = account.last_holdings_data.get('holdings', []) or []
+            else:
+                hl = []
+            for h in hl:
+                if h.get('symbol') and h.get('exchange'):
+                    wanted[(h['symbol'], h['exchange'])] = {'symbol': h['symbol'], 'exchange': h['exchange']}
+        if source_account and wanted:
+            try:
+                client = ExtendedOpenAlgoAPI(api_key=source_account.get_api_key(), host=source_account.host_url)
+                mq = client.multiquotes(symbols=list(wanted.values()))
+                if mq and mq.get('status') == 'success':
+                    for item in mq.get('results', []) or []:
+                        pc = (item.get('data') or {}).get('prev_close')
+                        if pc:
+                            prev_close_source[(item.get('symbol'), item.get('exchange'))] = float(pc)
+            except Exception as e:
+                current_app.logger.warning(f'Could not fetch prev_close from source account {source_account.id}: {e}')
+
     def attach_day_change(holding_list, account):
         """Day's P&L needs a previous close, which the holdings API doesn't
         return - fetch it in one batched multiquotes call per account
@@ -735,6 +769,14 @@ def holdings():
             symbols = [{'symbol': h.get('symbol'), 'exchange': h.get('exchange')} for h in holding_list]
             mq = client.multiquotes(symbols=symbols)
             if not mq or mq.get('status') != 'success':
+                # This account's own quotes are unavailable (e.g. free Kite
+                # key) - still derive day_change from the source account's
+                # prev_close using whatever ltp the holdings API gave.
+                for h in holding_list:
+                    src_pc = prev_close_source.get((h.get('symbol'), h.get('exchange')))
+                    ltp = float(h.get('ltp', 0) or 0)
+                    if src_pc and ltp:
+                        h['day_change'] = ltp - src_pc
                 return
             quote_by_key = {}
             for item in mq.get('results', []) or []:
@@ -748,7 +790,7 @@ def holdings():
                     quote_ltp = quote.get('ltp')
                     if quote_ltp:
                         h['ltp'] = float(quote_ltp)
-                prev_close = quote.get('prev_close')
+                prev_close = prev_close_source.get((h.get('symbol'), h.get('exchange'))) or quote.get('prev_close')
                 if prev_close:
                     ltp = float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0)
                     h['day_change'] = ltp - float(prev_close)
@@ -852,7 +894,7 @@ def holdings():
     if day_change_items:
         total_day_pnl = sum(h['day_change'] * h.get('total_qty', 0) for h in day_change_items)
         total_prev_close_value = sum(
-            (float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0) - h['day_change'])
+            ((float(h.get('ltp', 0) or 0) or float(h.get('average_price', 0) or 0)) - h['day_change'])
             * h.get('total_qty', 0)
             for h in day_change_items
         )
