@@ -10,7 +10,7 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
-from app.utils import holding_price
+from app.utils import holding_price, holding_tags
 from app.utils.position_cost_basis import apply_cost_basis, has_carry_forward_valuation
 from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 from app.utils.pnl_analysis_combined import compute_combined_pnl_analysis
@@ -848,6 +848,14 @@ def holdings():
     # falling back to cached data is "unknown", not "closed").
     live_symbols_by_account = {}
 
+    # Book tags saved with each account's cached holdings, read BEFORE the loop
+    # below overwrites last_holdings_data with a fresh fetch: an account whose
+    # OpenAlgo is down (its VM is only up part of the day) keeps its last known tags.
+    saved_book_tags = {}
+    for account, _ in results:
+        cached = account.last_holdings_data if isinstance(account.last_holdings_data, dict) else {}
+        saved_book_tags[account.id] = holding_tags.tags_from_json(cached.get('_book_tags'))
+
     for account, response in results:
         if response and response.get('status') == 'success':
             data = response.get('data', {})
@@ -898,8 +906,40 @@ def holdings():
         for holding in holdings_data:
             tag = tag_map.get((holding.get('account_id'), holding.get('symbol')))
             if tag:
-                holding['strategy'] = tag
-                strategy_names.add(tag)
+                holding['strategy'] = holding_tags.canonical_name(tag)
+                holding['strategy_source'] = 'manual'
+                strategy_names.add(holding['strategy'])
+
+    # Strategy-book tags win over the manual labels: OpenAlgo's attribution joins
+    # each account's holdings with its strategy book (built from the strategy tag
+    # on every order), so a stopped-out and re-bought stock keeps its tag and
+    # nothing has to be pruned. Manual tags remain for what the book does not
+    # explain (Unattributed, a mismatching book) and for an account whose call
+    # fails. See app/utils/holding_tags.py.
+    attribution = holding_tags.fetch_attribution([
+        (account.id, account.get_api_key(), account.host_url) for account, _ in results
+    ])
+    book_tags = {}
+    for account, _ in results:
+        rows = attribution.get(account.id)
+        if rows is not None:
+            book_tags[account.id] = holding_tags.tag_map(rows)
+            cached = account.last_holdings_data if isinstance(account.last_holdings_data, dict) else {}
+            account.last_holdings_data = {**cached, '_book_tags': holding_tags.tags_to_json(book_tags[account.id])}
+        else:
+            book_tags[account.id] = saved_book_tags.get(account.id, {})
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    for holding in holdings_data:
+        hit = book_tags.get(holding.get('account_id'), {}).get((holding.get('symbol'), holding.get('exchange')))
+        if hit:
+            holding['strategy'] = hit[0]
+            holding['strategy_source'] = 'book'
+            if hit[1]:
+                holding['strategy_detail'] = hit[1]
+    strategy_names = {h['strategy'] for h in holdings_data if h.get('strategy')}
 
     # Calculate statistics from the per-row invested/current/pnl values set in
     # enrich_holdings() above - all three derived from the same LTP snapshot,

@@ -212,7 +212,7 @@
                                the Actions cell) instead, for unmerged rows. Tag-trigger badge
                                removed from this cell for the same reason - strategy tagging
                                now lives in that same popup (see holdingDetailModal below). #}
-                            <td class="font-medium symbol-cell">{{ holding.symbol }}</td>
+                            <td class="font-medium symbol-cell"{% if holding.strategy_detail %} title="Strategy book: {{ holding.strategy_detail }}"{% endif %}>{{ holding.symbol }}</td>
                             <td class="exchange-cell"><span class="{{ badge('outline') }}">{{ holding.exchange }}</span></td>
                             {# Matches OpenAlgo's QuantityCell exactly: badges + the free-qty
                                number all inside ONE inline-flex span with a gap, plus
@@ -605,7 +605,14 @@ function loadHoldingsPrefs() {
         if (saved.filters) {
             holdingsFilters.hasT1 = !!saved.filters.hasT1;
             holdingsFilters.hasPledged = !!saved.filters.hasPledged;
-            holdingsFilters.strategy = saved.filters.strategy || [];
+            // Strategy names come from the strategy book now ("RSR" is "RSRotationPositional"):
+            // map a saved filter to the current name, and drop names that no longer exist
+            // so a stale filter can never hide every row.
+            const STRATEGY_ALIASES = { RSR: 'RSRotationPositional' };
+            const known = new Set(Array.from(document.querySelectorAll('#strategyFilterBtns button')).map(b => b.dataset.strategy || b.textContent.trim()));
+            holdingsFilters.strategy = (saved.filters.strategy || [])
+                .map(n => STRATEGY_ALIASES[n] || n)
+                .filter(n => known.size === 0 || known.has(n));
         }
         if (saved.allocationBasis === 'current' || saved.allocationBasis === 'invested') {
             allocationBasis = saved.allocationBasis;
