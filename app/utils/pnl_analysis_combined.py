@@ -22,6 +22,7 @@ guarantee the other combined views make.
 import concurrent.futures
 import logging
 
+from app.utils import holding_price, pnl_revalue
 from app.utils.openalgo_client import ExtendedOpenAlgoAPI
 
 logger = logging.getLogger(__name__)
@@ -126,8 +127,16 @@ def merge_curves(curves):
     }
 
 
-def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, symbol_contains=None):
-    """Fetch and merge history (and, for Equity, the curve) from every account."""
+def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, symbol_contains=None,
+                                  price_of_factory=None, now=None, scope_tags=None):
+    """Fetch and merge history (and, for Equity, the curve) from every account.
+
+    price_of_factory(keys) -> price_of(symbol, exchange), when given, revalues the open
+    holdings (and the curve's last unrealized level) at the Holdings page's price, so
+    the two pages agree (see app/utils/pnl_revalue.py). Without it OpenAlgo's own
+    valuation is used unchanged. scope_tags {(account_id, symbol): strategy} are the
+    manual tags: a holding with one (or a book strategy) moves the curve, others do not.
+    """
     if not accounts:
         return _empty_result(start_date, end_date, segment)
 
@@ -142,6 +151,17 @@ def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, 
                 )
             )
 
+    now = now or holding_price.ist_now()
+    price_of = None
+    if price_of_factory is not None:
+        held = {(p.get('symbol'), p.get('exchange'))
+                for _a, history, _e, _c, _ce in results if history
+                for p in history.get('open_positions', []) if p.get('source') == 'holdings'}
+        try:
+            price_of = price_of_factory(held) if held else None
+        except Exception:
+            logger.exception('Could not build the holdings price chain; keeping OpenAlgo valuation')
+
     per_account = []
     failed_accounts = []
     curve_missing_accounts = []
@@ -149,6 +169,9 @@ def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, 
     open_positions = []
     curves = []
     unrealized_total = None
+    curve_delta = 0.0
+    revalued = False
+    scope_tags = scope_tags or {}
 
     for account, history, history_error, curve, curve_error in results:
         entry = {
@@ -167,23 +190,40 @@ def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, 
             tagged['account_id'] = account.id
             tagged['account_name'] = account.account_name
             closed_trades.append(tagged)
+        account_rows = []
         for position in history.get('open_positions', []):
             tagged = dict(position)
             tagged['account_id'] = account.id
             tagged['account_name'] = account.account_name
-            open_positions.append(tagged)
+            account_rows.append(tagged)
 
         # The live open figure exists only when the range ends today; one
         # account having it is enough to make the others' zeros meaningful.
         account_unrealized = history.get('total_unrealized_pnl')
+        deltas = None
+        if price_of is not None and account_unrealized is not None:
+            account_rows, deltas, row_delta = pnl_revalue.revalue_open_rows(
+                account_rows, price_of,
+                scope_of=lambda row: row.get('strategy') or scope_tags.get((row.get('account_id'), row.get('symbol'))))
+            account_unrealized += row_delta
+            revalued = True
+        open_positions.extend(account_rows)
         if account_unrealized is not None:
             unrealized_total = (unrealized_total or 0.0) + account_unrealized
 
         if segment == EQUITY:
             if curve is not None:
+                if deltas is not None:
+                    curve, delta = pnl_revalue.revalue_curve(curve, deltas, now)
+                    curve_delta += delta
                 curves.append(curve)
             else:
                 curve_missing_accounts.append(account.account_name)
+
+    merged_curve = merge_curves(curves)
+    if merged_curve is not None and revalued:
+        # Said on the page's data so a reader can see the curve was revalued and by how much.
+        merged_curve['notes']['unrealized_revalued'] = round(curve_delta, 2)
 
     return {
         'start_date': start_date,
@@ -192,7 +232,7 @@ def compute_combined_pnl_analysis(accounts, start_date, end_date, segment=None, 
         'closed_trades': closed_trades,
         'open_positions': open_positions,
         'total_unrealized_pnl': round(unrealized_total, 2) if unrealized_total is not None else None,
-        'curve': merge_curves(curves),
+        'curve': merged_curve,
         'per_account': per_account,
         'failed_accounts': failed_accounts,
         'curve_missing_accounts': curve_missing_accounts,

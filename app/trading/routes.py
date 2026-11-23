@@ -10,7 +10,7 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
-from app.utils import holding_price, holding_tags
+from app.utils import holding_price, holding_tags, pnl_revalue
 from app.utils.position_cost_basis import apply_cost_basis, has_carry_forward_valuation
 from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 from app.utils.pnl_analysis_combined import compute_combined_pnl_analysis
@@ -533,7 +533,18 @@ def pnl_analysis():
     symbol_contains = request.args.get('symbol_contains') or None
 
     try:
-        data = compute_combined_pnl_analysis(accounts, start_date, end_date, segment, symbol_contains)
+        # Open holdings are valued with the Holdings page's price chain, so the two
+        # pages give one unrealized figure (app/utils/pnl_revalue.py).
+        source_account = pnl_revalue.pick_source_account(
+            current_user.get_active_accounts(), current_app.config.get('QUOTE_SOURCE_HOST'))
+        scope_tags = {
+            (t.account_id, t.symbol): holding_tags.canonical_name(t.strategy)
+            for t in PositionTag.query.filter(PositionTag.account_id.in_([a.id for a in accounts])).all()
+        }
+        data = compute_combined_pnl_analysis(
+            accounts, start_date, end_date, segment, symbol_contains,
+            price_of_factory=lambda keys: pnl_revalue.build_price_of(keys, source_account),
+            scope_tags=scope_tags)
     except Exception as e:
         current_app.logger.exception(f'Error computing combined P&L analysis: {e}')
         return jsonify({'status': 'error', 'message': 'Failed to compute combined P&L analysis'}), 500
