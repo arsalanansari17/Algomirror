@@ -147,3 +147,21 @@ def latest_closes(keys, now: datetime) -> dict:
         if key in wanted:
             out.setdefault(key, []).append((row.trade_date, row.close))
     return out
+
+
+def empty_reply_to_ignore(response, cached, now: datetime) -> bool:
+    """True when a holdings reply should NOT replace the cached holdings.
+
+    A broker that is logged out (Kotak overnight, before the morning login) can
+    answer `success` with no holdings and zero totals. Saved as the account's
+    cache that wipes the last real holdings, and with them the account's strategy
+    tags, the filter chips and the page rows, until the broker is live again
+    (accounts 3, 4 and 5 at 00:00 IST on 24 Nov). An empty reply is trusted only
+    while the market is open; otherwise the last non-empty cache is kept.
+    """
+    if not isinstance(response, dict) or response.get('status') != 'success':
+        return False
+    if (response.get('data') or {}).get('holdings'):
+        return False
+    previous = (cached or {}).get('holdings') if isinstance(cached, dict) else None
+    return bool(previous) and not market_open(now)

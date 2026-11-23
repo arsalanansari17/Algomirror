@@ -857,6 +857,12 @@ def holdings():
         saved_book_tags[account.id] = holding_tags.tags_from_json(cached.get('_book_tags'))
 
     for account, response in results:
+        if holding_price.empty_reply_to_ignore(response, account.last_holdings_data, now_ist):
+            # A logged-out broker answers success with nothing: keep the last real
+            # holdings (and so the tags and filter chips) instead of wiping them.
+            current_app.logger.warning(
+                f'Account {account.id}: empty holdings reply outside market hours ignored, using the cache')
+            response = None
         if response and response.get('status') == 'success':
             data = response.get('data', {})
             holding_list = data.get('holdings', [])

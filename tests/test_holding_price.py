@@ -172,3 +172,30 @@ def test_latest_closes_survives_a_missing_table():
     db.init_app(app)
     with app.app_context():
         assert hp.latest_closes({('CYIENT', 'NSE')}, at(23, 17, 0)) == {}
+
+
+REAL = {'holdings': [{'symbol': 'LAURUSLABS', 'exchange': 'NSE'}]}
+EMPTY_OK = {'status': 'success', 'data': {'holdings': [], 'statistics': {'totalholdingvalue': 0.0}}}
+
+
+def test_an_empty_success_at_night_does_not_wipe_the_cached_holdings():
+    assert hp.empty_reply_to_ignore(EMPTY_OK, REAL, at(24, 0, 0)) is True
+
+
+def test_an_empty_success_in_market_hours_is_trusted():
+    assert hp.empty_reply_to_ignore(EMPTY_OK, REAL, at(23, 11, 0)) is False
+
+
+def test_a_real_reply_always_replaces_the_cache():
+    reply = {'status': 'success', 'data': {'holdings': [{'symbol': 'X'}]}}
+    assert hp.empty_reply_to_ignore(reply, REAL, at(24, 0, 0)) is False
+
+
+def test_an_empty_reply_with_nothing_cached_changes_nothing():
+    assert hp.empty_reply_to_ignore(EMPTY_OK, None, at(24, 0, 0)) is False
+    assert hp.empty_reply_to_ignore(EMPTY_OK, {'holdings': []}, at(24, 0, 0)) is False
+
+
+def test_error_and_missing_replies_are_not_this_functions_business():
+    assert hp.empty_reply_to_ignore(None, REAL, at(24, 0, 0)) is False
+    assert hp.empty_reply_to_ignore({'status': 'error'}, REAL, at(24, 0, 0)) is False
