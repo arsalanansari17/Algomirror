@@ -121,6 +121,9 @@
                     </div>
                     <div id="statDayPnlPct" data-pv="pnl" class="{{ PNL_BADGE_SHAPE }} {{ 'bg-green-500/10 text-green-600 border-green-500/30' if statistics.totaldaypnlpercentage is defined and statistics.totaldaypnlpercentage >= 0 else 'bg-red-500/10 text-red-600 border-red-500/30' }}">{{ signed_pct(statistics.totaldaypnlpercentage) }}</div>
                 </div>
+                {% if stale_price_rows %}
+                <div class="text-xs text-warning mt-1">{{ stale_price_rows }} row{{ '' if stale_price_rows == 1 else 's' }} priced from older data (marked *), so this figure may be off.</div>
+                {% endif %}
             </div>
         </div>
         <div class="{{ card() }}">
@@ -227,7 +230,10 @@
                                 </span>
                             </td>
                             <td class="avgprice-cell font-mono text-right" data-pv="avgprice">{{ fmt_currency(holding.average_price|float) if holding.average_price else "-" }}</td>
-                            <td class="ltp-cell font-mono text-right">{{ fmt_currency(holding.ltp|float) if holding.ltp else "-" }}</td>
+                            {# price_stale: this row's price is not live or the latest stored close
+                               (see app/utils/holding_price.py); the asterisk says so instead of
+                               letting an old number pass for a current one. #}
+                            <td class="ltp-cell font-mono text-right"{% if holding.price_stale %} title="Price may be stale: {{ holding.price_source or 'account' }}{% if holding.price_asof %}, as of {{ holding.price_asof }}{% endif %}"{% endif %}>{{ fmt_currency(holding.ltp|float) if holding.ltp else "-" }}{% if holding.price_stale and holding.ltp %}<span class="text-warning">*</span>{% endif %}</td>
                             <td class="product-cell"><span class="{{ badge('secondary') }}">{{ holding.product }}</span></td>
                             <td class="invested-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.invested) }}</td>
                             <td class="current-cell font-mono text-right" data-pv="value">{{ fmt_currency(holding.current) }}</td>

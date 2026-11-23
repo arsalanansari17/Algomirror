@@ -10,6 +10,7 @@ from app.utils.background_service import option_chain_service
 from app.utils.session_manager import session_manager
 from app.utils.rate_limiter import api_rate_limit, heavy_rate_limit, limiter
 from app.utils.pnl_curve import compute_combined_pnl
+from app.utils import holding_price
 from app.utils.position_cost_basis import apply_cost_basis, has_carry_forward_valuation
 from app.utils.pnl_history_combined import compute_combined_pnl_history, compute_combined_strategy_legs
 from app.utils.pnl_analysis_combined import compute_combined_pnl_analysis
@@ -720,6 +721,8 @@ def holdings():
     # multiquotes call is rejected and its holdings would get no Day Chg %.
     # Per-account quotes remain the fallback if the source is unavailable.
     prev_close_source = {}
+    source_quotes = {}
+    now_ist = holding_price.ist_now()
     source_host = (current_app.config.get('QUOTE_SOURCE_HOST') or '').lower()
     if source_host:
         source_account = next(
@@ -742,11 +745,52 @@ def holdings():
                 mq = client.multiquotes(symbols=list(wanted.values()))
                 if mq and mq.get('status') == 'success':
                     for item in mq.get('results', []) or []:
-                        pc = (item.get('data') or {}).get('prev_close')
+                        data = item.get('data') or {}
+                        key = (item.get('symbol'), item.get('exchange'))
+                        pc = data.get('prev_close')
                         if pc:
-                            prev_close_source[(item.get('symbol'), item.get('exchange'))] = float(pc)
+                            prev_close_source[key] = float(pc)
+                        source_quotes[key] = {'ltp': data.get('ltp'), 'prev_close': pc}
             except Exception as e:
                 current_app.logger.warning(f'Could not fetch prev_close from source account {source_account.id}: {e}')
+
+    # Every held symbol, whichever account holds it, for the one stored-close query.
+    held_keys = set()
+    for account, response in results:
+        if response and response.get('status') == 'success':
+            hl = (response.get('data') or {}).get('holdings', []) or []
+        elif account.last_holdings_data and isinstance(account.last_holdings_data, dict):
+            hl = account.last_holdings_data.get('holdings', []) or []
+        else:
+            hl = []
+        for h in hl:
+            if h.get('symbol') and h.get('exchange'):
+                held_keys.add((h['symbol'], h['exchange']))
+    store_closes = holding_price.latest_closes(held_keys, now_ist)
+
+    def apply_market_prices(holding_list):
+        """Price every row from market-level sources (see utils/holding_price):
+        a price belongs to the market, not to the account, so an account with no
+        live broker behind it (free Kite key, the acc2 archive) cannot leave a
+        stale LTP on its rows. Rows that end up with a live or stored-close price
+        get their day_change here; the rest keep the per-account path below and
+        are marked stale. price_source / price_asof / price_stale are set on
+        every row (they travel into last_holdings_data, so a fallback row must
+        not keep an old label)."""
+        for h in holding_list:
+            key = (h.get('symbol'), h.get('exchange'))
+            p = holding_price.pick_price(
+                h.get('ltp'), source_quotes.get(key), store_closes.get(key), now_ist)
+            if p['ltp']:
+                h['ltp'] = p['ltp']
+            h['price_source'] = p['source']
+            h['price_asof'] = p['asof']
+            h['price_stale'] = p['stale']
+            if p['source'] in ('live', 'close'):
+                if p['prev_close']:
+                    h['day_change'] = p['ltp'] - p['prev_close']
+                else:
+                    h.pop('day_change', None)
 
     def attach_day_change(holding_list, account):
         """Day's P&L needs a previous close, which the holdings API doesn't
@@ -762,6 +806,8 @@ def holdings():
         transform_holdings_data never sets an 'ltp' key) so
         enrich_holdings() below computes Current value/allocation off a
         real price instead of silently falling back to average_price."""
+        # Rows priced from the market-level chain already have ltp and day_change.
+        holding_list = [h for h in holding_list if h.get('price_source') not in ('live', 'close')]
         if not holding_list:
             return
         try:
@@ -806,6 +852,7 @@ def holdings():
         if response and response.get('status') == 'success':
             data = response.get('data', {})
             holding_list = data.get('holdings', [])
+            apply_market_prices(holding_list)
             attach_day_change(holding_list, account)
             enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
@@ -821,6 +868,7 @@ def holdings():
         elif account.last_holdings_data:
             data = account.last_holdings_data
             holding_list = data.get('holdings', []) if isinstance(data, dict) else []
+            apply_market_prices(holding_list)
             attach_day_change(holding_list, account)
             enrich_holdings(holding_list, account)
             holdings_data.extend(holding_list)
@@ -906,6 +954,7 @@ def holdings():
     return render_template('trading/holdings.html',
                          holdings_data=holdings_data,
                          statistics=statistics,
+                         stale_price_rows=sum(1 for h in holdings_data if h.get('price_stale')),
                          selected_account_ids=get_selected_account_ids(),
                          accounts=current_user.get_active_accounts(),
                          strategy_names=sorted(strategy_names))
