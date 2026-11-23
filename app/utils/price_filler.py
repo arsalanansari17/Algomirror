@@ -36,6 +36,13 @@ logger = logging.getLogger(__name__)
 IST = pytz.timezone("Asia/Kolkata")
 WINDOW_START = time(15, 40)
 WINDOW_END = time(16, 10)
+# A second, short pass before the open. The 15:45 bar is only provisional (the exchange
+# close is not final yet: 23 Nov stored CYIENT 1153.70 against a real 1160.50), and a
+# later re-fetch corrects it exactly (verified at 00:40 on 24 Nov). The morning pass
+# makes yesterday's bar final before the day's valuations read it, instead of at the
+# next 15:45. It ends before 09:15, when the live accounts start trading.
+MORNING_START = time(9, 0)
+MORNING_END = time(9, 12)
 PAUSE_SECONDS = 1.0
 MAX_CONSECUTIVE_FAILURES = 5
 REQUEST_TIMEOUT_SECONDS = 30
@@ -49,8 +56,30 @@ _run_lock = threading.Lock()
 
 
 def in_window(now_ist: datetime) -> bool:
-    """A weekday between WINDOW_START and WINDOW_END (IST)."""
-    return now_ist.weekday() < 5 and WINDOW_START <= now_ist.time() < WINDOW_END
+    """A weekday, in the evening window (WINDOW_START to WINDOW_END) or the morning one
+    (MORNING_START to MORNING_END), IST."""
+    if now_ist.weekday() >= 5:
+        return False
+    t = now_ist.time()
+    return WINDOW_START <= t < WINDOW_END or MORNING_START <= t < MORNING_END
+
+
+def last_final_session(now_ist: datetime) -> date:
+    """The latest day a run may fetch a bar for (and claim coverage through).
+
+    Today once the evening window has opened on a weekday (15:40), otherwise the
+    previous weekday. A bar for a day whose session has not finished does not exist
+    yet; fetching "up to today" before the close would still set the stored coverage
+    to today, and the evening top-up (which looks for coverage older than today) would
+    then find nothing to fetch and the store would have no bar for today all evening.
+    """
+    day = now_ist.date()
+    if now_ist.weekday() < 5 and now_ist.time() >= WINDOW_START:
+        return day
+    day -= timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
 
 
 def plan_range(ps, today: date) -> tuple[date, date] | None:
@@ -164,13 +193,18 @@ def run(fetch, now_fn=None, sleep=time_module.sleep, force: bool = False) -> dic
         if not force and not in_window(now_fn()):
             summary["stopped"] = "outside the window"
             return summary
-        work = pending_work(now_fn().date())
+        started = now_fn()
+        work = pending_work(started.date())
+        cap = last_final_session(started)
         failures = 0
         for index, (symbol, exchange, start, end) in enumerate(work):
             if not force and not in_window(now_fn()):
                 summary["stopped"] = "window closed"
                 summary["left"] = len(work) - index
                 return summary
+            end = min(end, cap)
+            if end < start:
+                continue
             status, payload = fetch(symbol, exchange, start, end)
             if status == "ok":
                 if not payload:
@@ -252,5 +286,15 @@ def start_scheduler(app) -> None:
         misfire_grace_time=600,
         replace_existing=True,
     )
+    _scheduler.add_job(
+        run_scheduled,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=9, minute=3, timezone=IST),
+        args=[app],
+        id="price_fill_morning",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("Price fill scheduled for 15:45 IST on weekdays")
+    logger.info("Price fill scheduled for 09:03 and 15:45 IST on weekdays")

@@ -69,6 +69,12 @@ def test_window_is_a_weekday_after_the_close_and_before_the_vm_stops():
     assert not price_filler.in_window(IST.localize(datetime(2026, 11, 13, 16, 10)))
     assert not price_filler.in_window(IST.localize(datetime(2026, 11, 14, 15, 50)))  # Saturday
     assert not price_filler.in_window(IST.localize(datetime(2026, 11, 13, 9, 30)))  # trading
+    # the short pass before the open (yesterday's bar made final), never once trading starts
+    assert price_filler.in_window(IST.localize(datetime(2026, 11, 13, 9, 0)))
+    assert price_filler.in_window(IST.localize(datetime(2026, 11, 13, 9, 11)))
+    assert not price_filler.in_window(IST.localize(datetime(2026, 11, 13, 9, 12)))
+    assert not price_filler.in_window(IST.localize(datetime(2026, 11, 13, 8, 59)))
+    assert not price_filler.in_window(IST.localize(datetime(2026, 11, 14, 9, 5)))  # Saturday
 
 
 def test_outside_the_window_nothing_is_fetched(app):
@@ -149,7 +155,8 @@ def test_a_wish_for_a_later_end_fetches_only_the_tail(app):
 
     _run(fetcher)
 
-    assert fetcher.calls == [("ABC", "NSE", date(2026, 11, 2), date(2026, 11, 20))]
+    # the wish asks past Friday (the run's day): a run never claims a day that has not finished
+    assert fetcher.calls == [("ABC", "NSE", date(2026, 11, 2), FRI)]
 
 
 def test_an_open_position_gets_a_daily_top_up_but_a_closed_one_does_not(app):
@@ -337,3 +344,40 @@ def test_the_api_key_is_never_in_what_the_fetcher_returns(monkeypatch):
     fetch, _ = _fetch_with(monkeypatch, error=RuntimeError("secret-key leaked here"))
 
     assert "secret-key" not in str(fetch("ABC", "NSE", START, END))
+
+
+def test_last_final_session_is_today_only_after_the_evening_window_opens():
+    ls = price_filler.last_final_session
+    assert ls(IST.localize(datetime(2026, 11, 24, 9, 3))) == date(2026, 11, 23)     # Tuesday morning
+    assert ls(IST.localize(datetime(2026, 11, 24, 0, 40))) == date(2026, 11, 23)    # just after midnight
+    assert ls(IST.localize(datetime(2026, 11, 24, 15, 45))) == date(2026, 11, 24)   # evening run
+    assert ls(IST.localize(datetime(2026, 11, 23, 9, 3))) == date(2026, 11, 20)     # Monday morning: Friday
+    assert ls(IST.localize(datetime(2026, 11, 21, 11, 0))) == date(2026, 11, 20)    # Saturday
+
+
+def test_a_morning_pass_does_not_claim_today_so_the_evening_run_still_fetches_it(app):
+    mon, tue = date(2026, 11, 23), date(2026, 11, 24)
+    price_store.upsert_closes("HELD", "NSE", BARS, date(2026, 11, 2), mon)
+    price_store.record_ask("HELD", "NSE", date(2026, 11, 2), mon)
+
+    morning = Fetcher()
+    _run(morning, now=IST.localize(datetime(2026, 11, 24, 9, 3)))
+    # re-fetches the finished sessions (corrects Monday's provisional bar), never today
+    assert morning.calls == [("HELD", "NSE", date(2026, 11, 18), mon)]
+    assert price_store.get_symbol("HELD", "NSE").covered_to == mon
+
+    evening = Fetcher()
+    _run(evening, now=IST.localize(datetime(2026, 11, 24, 15, 45)))
+    assert evening.calls == [("HELD", "NSE", date(2026, 11, 18), tue)]
+    assert price_store.get_symbol("HELD", "NSE").covered_to == tue
+
+
+def test_a_manual_run_at_night_does_not_claim_the_coming_day(app):
+    # 00:40 on Tuesday 24 Nov (the day the store was filled by hand): no bar for the 24th exists
+    mon = date(2026, 11, 23)
+    price_store.upsert_closes("HELD", "NSE", BARS, date(2026, 11, 2), date(2026, 11, 20))
+    price_store.record_ask("HELD", "NSE", date(2026, 11, 2), mon)
+    fetcher = Fetcher()
+    _run(fetcher, now=IST.localize(datetime(2026, 11, 24, 0, 40)), force=True)
+    assert fetcher.calls == [("HELD", "NSE", date(2026, 11, 15), mon)]
+    assert price_store.get_symbol("HELD", "NSE").covered_to == mon
