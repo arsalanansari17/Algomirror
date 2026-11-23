@@ -8,13 +8,14 @@ price from market-level sources instead:
 
 * market open (weekday 09:15-15:30 IST): the designated source account's live
   quote (LTP and previous close together);
-* market closed: the shared daily-close store (last bar and the one before it),
-  when it holds the latest expected session. Off-hours broker quotes are not
-  trusted over a current store: Kotak returned a wrong Saturday price once (see
-  openalgo SKYSHIELD_PATCHES 2026-10-24);
-* store behind (after the bell before the evening filler, or the filler failed):
-  the source quote, marked stale, then the old stored close, then the account's
-  own LTP, always marked stale.
+* weekday outside the session: the source quote (the official close). The store's
+  newest bar is provisional until the next evening's re-fetch, so it is not
+  preferred;
+* weekend or holiday: the shared daily-close store (broker quotes are not trusted
+  there: Kotak returned a wrong Saturday price once, see openalgo
+  SKYSHIELD_PATCHES 2026-10-24);
+* otherwise (store behind, quote missing): the quote, then the old stored close,
+  then the account's own LTP, marked stale.
 
 `pick_price` is pure so it can be tested without Flask or a database.
 """
@@ -87,15 +88,26 @@ def pick_price(account_ltp, source_quote, closes, now: datetime) -> dict:
                 'asof': now.isoformat(timespec='minutes'), 'stale': False}
 
     store_current = bool(bars) and bars[-1][0] >= expected_close_date(now)
+    weekday = now.weekday() < 5
+
+    # A weekday outside the session (evening, early morning): the source quote is
+    # the official close, and the store's newest bar is only provisional. The
+    # filler captures it at 15:45, before the exchange's close is final (stored
+    # 23 Nov: CYIENT 1153.70 against a real 1160.50), and the next evening's
+    # re-fetch is what corrects it.
+    if weekday and not is_open and sq_ltp:
+        return {'ltp': sq_ltp, 'prev_close': sq_prev or None, 'source': 'quote',
+                'asof': now.isoformat(timespec='minutes'), 'stale': False}
+
+    # Weekend or holiday: broker quotes are not trusted (Kotak returned a wrong
+    # Saturday price), the store's last bar is the best number there is.
     if not is_open and store_current:
         prev = bars[-2][1] if len(bars) > 1 else None
         return {'ltp': bars[-1][1], 'prev_close': prev, 'source': 'close',
                 'asof': bars[-1][0].isoformat(), 'stale': False}
 
-    # The store is behind (between the bell and the evening filler, or the filler
-    # failed) or market hours without a live quote. A quote beats showing the
-    # previous session's close as if it were today's: that would also turn the
-    # day's change into yesterday's move without any visible sign.
+    # The store is behind, or market hours without a live quote: any quote beats
+    # showing an old close as if it were current.
     if sq_ltp:
         return {'ltp': sq_ltp, 'prev_close': sq_prev or None, 'source': 'quote',
                 'asof': now.isoformat(timespec='minutes'), 'stale': True}

@@ -39,14 +39,21 @@ def test_market_hours_without_prev_close_use_the_last_stored_bar():
     assert p['prev_close'] == 1155.5 and p['source'] == 'live'
 
 
-def test_after_the_filler_the_stored_close_wins_over_a_stale_account_price():
-    # the acc2 archive case: account says 1121.70, the store has the real close
+def test_weekday_evening_without_a_quote_uses_the_store_over_a_stale_account_price():
+    # the acc2 archive case with the source quote missing: account says 1121.70
     p = hp.pick_price(1121.7, None, CLOSES, at(23, 17, 0))
     assert (p['ltp'], p['prev_close'], p['source'], p['stale']) == (1160.5, 1155.5, 'close', False)
     assert p['asof'] == '2026-11-23'
 
 
-def test_off_hours_quotes_are_not_trusted_when_the_store_has_a_close():
+def test_weekday_evening_prefers_the_quote_over_the_provisional_newest_bar():
+    # the store's 23 Nov bar was captured at 15:45: CYIENT 1153.70 against a real 1160.50
+    provisional = [(FRI, 1155.5), (MON, 1153.7)]
+    p = hp.pick_price(1121.7, {'ltp': 1160.5, 'prev_close': 1155.5}, provisional, at(23, 17, 0))
+    assert (p['ltp'], p['prev_close'], p['source'], p['stale']) == (1160.5, 1155.5, 'quote', False)
+
+
+def test_weekend_quotes_are_not_trusted_when_the_store_has_a_close():
     # Kotak once returned 1387.9 for CYIENT on a Saturday
     p = hp.pick_price(1121.7, {'ltp': 1387.9, 'prev_close': 1100.0}, CLOSES[:2], at(21, 12, 0))
     assert p['ltp'] == 1155.5 and p['source'] == 'close'
@@ -55,7 +62,7 @@ def test_off_hours_quotes_are_not_trusted_when_the_store_has_a_close():
 def test_between_the_bell_and_the_filler_a_quote_beats_yesterdays_close():
     # without this the Day's P&L would silently become yesterday's move
     p = hp.pick_price(1121.7, {'ltp': 1160.5, 'prev_close': 1155.5}, CLOSES[:2], at(23, 15, 45))
-    assert (p['ltp'], p['prev_close'], p['source'], p['stale']) == (1160.5, 1155.5, 'quote', True)
+    assert (p['ltp'], p['prev_close'], p['source'], p['stale']) == (1160.5, 1155.5, 'quote', False)
 
 
 def test_between_the_bell_and_the_filler_without_a_quote_the_old_close_is_flagged_stale():
@@ -68,7 +75,7 @@ def test_a_store_stuck_two_sessions_back_does_not_win_over_a_quote():
     # the filler stopped updating once (17 to 19 Nov): the quote is the better number
     stuck = [(date(2026, 11, 17), 1086.1)]
     p = hp.pick_price(1121.7, {'ltp': 1160.5, 'prev_close': 1155.5}, stuck, at(23, 17, 0))
-    assert (p['ltp'], p['source'], p['stale']) == (1160.5, 'quote', True)
+    assert (p['ltp'], p['source'], p['stale']) == (1160.5, 'quote', False)
 
 
 def test_a_stuck_store_and_no_quote_still_shows_a_stale_close():
@@ -97,8 +104,13 @@ def test_single_bar_gives_no_prev_close():
     assert p['ltp'] == 1160.5 and p['prev_close'] is None
 
 
-def test_no_store_data_falls_back_to_the_source_quote_marked_stale():
+def test_no_store_data_uses_the_source_quote_on_a_weekday_evening():
     p = hp.pick_price(1121.7, {'ltp': 1160.5, 'prev_close': 1155.5}, None, at(23, 17, 0))
+    assert (p['ltp'], p['source'], p['stale']) == (1160.5, 'quote', False)
+
+
+def test_weekend_without_store_data_falls_back_to_the_quote_marked_stale():
+    p = hp.pick_price(1121.7, {'ltp': 1160.5, 'prev_close': 1155.5}, None, at(21, 12, 0))
     assert (p['ltp'], p['source'], p['stale']) == (1160.5, 'quote', True)
 
 
