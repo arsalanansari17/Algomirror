@@ -71,6 +71,8 @@ changed files and restart `algomirror.service`. VM files are LF, the repo is CRL
 
 ## Done
 
+- 2026-11-26: acc1/acc2 back on the combined P&L: read-only archives `openalgo-archive-acc1` on acc4 (127.0.0.1:5001) and `openalgo-archive-acc2` on acc5 (10.160.0.9:5002, shows only while acc5 is up); CYIENT 11-25 exits at 1152 tagged EBP. Details in `openalgo/SKYSHIELD_PATCHES.md`.
+
 - 2026-11-16: acc2 archived. Its ledger is served by `openalgo-archive-acc2.service` on acc1 (127.0.0.1:5001, read-only, no broker); AlgoMirror acc2 host switched to it; combined pages show all five accounts; acc2 VM and static IP deleted (snapshot `iram-skyshield-final-20261116`, local copy in `C:/Users/Arsalan/SkyShieldBackups`). Closes for LTIM/SGLTL/SMLISUZU/HEG imported from NSE files.
 
 - 2026-11-13: shared daily-close store (`/prices/api/v1/history`, `daily_closes`, `price_symbols`, evening filler) deployed to acc1; first backfill 119 stored / 7 no data; acc1 curve loads in 3 s.
